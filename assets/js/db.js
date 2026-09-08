@@ -47,18 +47,45 @@ function getExamRecords() {
   return result
 }
 
-// Defaults shown until _syncClinicSettings() replaces these with live DB data.
+// Defaults shown until _syncServices() (auth.js) replaces these with live
+// DB data. Two independent flags beyond the usual active/inactive
+// `status`: `bookable` — offered as a selectable appointment type at all —
+// and `patientVisible` — patients themselves can see/pick it, both on the
+// public Services page and their own booking wizard, as opposed to
+// staff/admin-only (see clinic_services' own column comments, schema.sql).
+// No per-service duration — every appointment runs on the one clinic-wide
+// interval (consultationSettings.defaultDuration); a per-service override
+// could never actually differ from it, so it was dropped entirely.
 var CLINIC_SERVICES = [
-  { id: 1, name: 'Eye Examination',                   description: "A comprehensive assessment of the patient's eye condition to evaluate vision and overall eye health.",                    duration: 30, status: 'active', icon: 'eye' },
-  { id: 2, name: 'Vision Screening',                  description: 'A basic check to determine if a patient has possible vision problems that may require further examination.',              duration: 15, status: 'active', icon: 'activity' },
-  { id: 3, name: 'Refraction',                        description: "A procedure used to determine the correct lens power needed to improve the patient's vision.",                            duration: 25, status: 'active', icon: 'search' },
-  { id: 4, name: 'Diagnosis of Refractive Errors',    description: 'Identification of vision conditions such as nearsightedness, farsightedness, and astigmatism.',                          duration: 25, status: 'active', icon: 'alert-circle' },
-  { id: 5, name: 'Prescription of Corrective Lenses', description: "Issuance of eyeglass or contact lens prescriptions based on the patient's vision needs.",                               duration: 20, status: 'active', icon: 'file-text' },
-  { id: 6, name: 'Lens Fitting',                      description: 'Adjustment and fitting of lenses to ensure proper alignment, comfort, and visual clarity.',                              duration: 20, status: 'active', icon: 'award' },
-  { id: 7, name: 'Optical Frame Selection',           description: 'Assisting patients in choosing frames that fit properly and suit their preferences.',                                    duration: 15, status: 'active', icon: 'archive' },
-  { id: 8, name: 'Follow-up Consultation',            description: "Subsequent visits to review the patient's vision condition and assess any changes after treatment or prescription.",     duration: 20, status: 'active', icon: 'refresh-cw' }
+  { id: 1,  name: 'Comprehensive Eye Examination',             description: 'A thorough assessment of overall eye health and visual acuity, including refraction and internal/external eye evaluation.',                       status: 'active', icon: 'eye',        bookable: true,  patientVisible: true },
+  { id: 2,  name: 'Optical Frame Selection',                   description: 'Assisting patients in choosing frames that fit properly and suit their preferences.',                                                              status: 'active', icon: 'archive',    bookable: true,  patientVisible: true },
+  { id: 3,  name: 'Eyeglass/Contact Lens Fitting',              description: 'Fitting and adjustment of eyeglasses or contact lenses for proper alignment, comfort, and visual clarity.',                                        status: 'active', icon: 'award',      bookable: true,  patientVisible: true },
+  // Staff-only — never shown to patients (booking wizard or public site),
+  // but staff/admin can still select it when booking a follow-up on a
+  // patient's behalf. Name intentionally kept exactly as-is (see
+  // appointmentWizardHtml(), pages.js, and the doctor's exam wizard
+  // follow-up flow, both of which depend on it).
+  { id: 4,  name: 'Follow-up Consultation',                    description: "Subsequent visits to review the patient's vision condition and assess any changes after treatment or prescription.",                                status: 'active', icon: 'refresh-cw', bookable: true,  patientVisible: false },
+  // Display-only — listed on the public Services page, never a selectable
+  // appointment type for anyone.
+  { id: 5,  name: 'Eye Refraction (Manual and Autorefraction)', description: 'Determines the correct lens power needed to improve vision, using both manual retinoscopy and computerized autorefraction.',                        status: 'active', icon: 'search',     bookable: false, patientVisible: true },
+  { id: 6,  name: 'Spot Vision Screening',                     description: 'A quick, portable screening to detect possible vision problems that may need further examination.',                                                 status: 'active', icon: 'activity',   bookable: false, patientVisible: true },
+  { id: 7,  name: 'Ishihara Test (Color Blindness Test)',      description: 'A color vision test using specially designed plates to detect red-green color blindness.',                                                         status: 'active', icon: 'file-text',  bookable: false, patientVisible: true },
+  { id: 8,  name: 'Dispensing of Eyeglasses',                  description: 'Preparation and release of finished eyeglasses to the patient, including fit verification.',                                                        status: 'active', icon: 'package',    bookable: false, patientVisible: true },
+  { id: 9,  name: 'Slit Lamp Examination',                     description: 'A detailed examination of the front structures of the eye using a specialized microscope with an intense light source.',                            status: 'active', icon: 'settings',   bookable: false, patientVisible: true },
+  { id: 10, name: 'Tonometry Test',                            description: 'Measures intraocular pressure to help screen for glaucoma.',                                                                                        status: 'active', icon: 'alert-circle', bookable: false, patientVisible: true }
 ]
-var _svcNextId = 9
+var _svcNextId = 11
+
+// Service types that are dispensing/administrative, not a clinical exam —
+// nothing was actually examined, so completing one of these never
+// requires a diagnosis. Everything else (Comprehensive Eye Examination,
+// Follow-up Consultation) still does — even a follow-up involves an
+// assessment of the patient's condition. Referenced by both the New
+// Examination wizard's Diagnosis step (pages.js) and saveNewExam()'s
+// save-time validation (main.js), so they can't drift out of sync with
+// each other.
+var NON_EXAM_SERVICE_TYPES = ['Eyeglass/Contact Lens Fitting', 'Optical Frame Selection']
 
 var clinicInfo = {
   name: 'Cana Optical Clinic',
@@ -76,11 +103,10 @@ var clinicInfo = {
 }
 
 var consultationSettings = {
-  defaultDuration:         '30 min',
+  defaultDuration:         '45 min',
   maxAdvanceBooking:       '3 months',
   minAdvanceBooking:       '1 day',
   maxApptsPerDoctorPerDay: 12,
-  maxApptsPerPatientPerDay: 1,
   morningStart:   '8:00 AM',
   morningEnd:     '12:00 PM',
   afternoonStart: '1:00 PM',

@@ -50,24 +50,6 @@ try {
     }
 
     // ── Claim ──────────────────────────────────────────────────────
-    // Same max-appointments-per-patient-per-day cap enforced in
-    // appointments/create.php — claiming an offer creates a real
-    // appointment too, so without this check a patient already at their
-    // daily limit could sidestep it entirely through the waitlist. Checked
-    // before the atomic claim UPDATE below so a blocked claim doesn't
-    // consume the offer — it stays 'offered' for the patient to claim once
-    // they're clear, or for the next person in line once it expires.
-    $maxPerPatientDay = (int)($pdo->query('SELECT max_appts_per_patient_per_day FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn() ?: 1);
-    $pcs = $pdo->prepare(
-        "SELECT COUNT(*) FROM appointments
-         WHERE patient_id = ? AND date = ? AND status NOT IN ('cancelled','disapproved')"
-    );
-    $pcs->execute([$row['patient_id'], $row['date']]);
-    if ((int)$pcs->fetchColumn() >= $maxPerPatientDay) {
-        jsonResponse(['success' => false, 'message' =>
-            'You already have ' . ($maxPerPatientDay === 1 ? 'an appointment' : $maxPerPatientDay . ' appointments') . ' scheduled for this date, so this slot can\'t be claimed. Please contact the clinic directly if you need an additional visit the same day.']);
-    }
-
     // Atomic conditional UPDATE as a mutex — same idiom as the
     // reschedule-request "fulfillRequest" flow in appointments/update.php —
     // so a claim racing the cron's expiry sweep can't double-allocate.

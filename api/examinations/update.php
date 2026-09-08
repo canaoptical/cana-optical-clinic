@@ -92,24 +92,28 @@ try {
     // re-notified every time the doctor edits some unrelated field on an
     // exam that already had a follow-up flagged.
     $oldFollowUpDate = null;
+    $oldFollowUpTime = null;
     if ($exam['consultation_id']) {
-        $oldFollowUpDate = $pdo->prepare('SELECT follow_up_date FROM consultations WHERE id = ?');
-        $oldFollowUpDate->execute([$exam['consultation_id']]);
-        $oldFollowUpDate = $oldFollowUpDate->fetchColumn() ?: null;
+        $oldFollowUp = $pdo->prepare('SELECT follow_up_date, follow_up_time FROM consultations WHERE id = ?');
+        $oldFollowUp->execute([$exam['consultation_id']]);
+        $oldFollowUp = $oldFollowUp->fetch();
+        $oldFollowUpDate = $oldFollowUp['follow_up_date'] ?? null;
+        $oldFollowUpTime = $oldFollowUp['follow_up_time'] ?? null;
 
         $pdo->prepare(
             'UPDATE consultations SET
                 date = ?, type = ?, chief_complaint = ?, history_present_illness = ?,
-                assessment = ?, recommendation = ?, follow_up_date = ?, status = ?
+                assessment = ?, recommendation = ?, follow_up_date = ?, follow_up_time = ?, status = ?
              WHERE id = ?'
         )->execute([
             $date,
-            $b['appointmentType'] ?? 'Eye Examination',
+            $b['appointmentType'] ?? 'Comprehensive Eye Examination',
             $b['chiefComplaint']        ?? '',
             $b['historyPresentIllness'] ?? '',
             $b['assessment']            ?? '',
             $b['recommendation']        ?? '',
             !empty($b['followUpDate']) ? $b['followUpDate'] : null,
+            (!empty($b['followUpDate']) && !empty($b['followUpTime'])) ? $b['followUpTime'] : null,
             $b['consultationStatus'] ?? 'completed',
             $exam['consultation_id'],
         ]);
@@ -212,10 +216,12 @@ try {
     // changed on this save — see the snapshot taken before the consultation
     // UPDATE above.
     $newFollowUpDate = !empty($b['followUpDate']) ? $b['followUpDate'] : null;
-    if ($newFollowUpDate && $newFollowUpDate !== $oldFollowUpDate) {
+    $newFollowUpTime = (!empty($b['followUpDate']) && !empty($b['followUpTime'])) ? $b['followUpTime'] : null;
+    if ($newFollowUpDate && ($newFollowUpDate !== $oldFollowUpDate || $newFollowUpTime !== $oldFollowUpTime)) {
         $fmtFollowUp = date('M j, Y', strtotime($newFollowUpDate));
+        $fmtFollowUpTime = $newFollowUpTime ? " at {$newFollowUpTime}" : '';
         notifyAdminStaff($pdo, 'follow_up_needed', 'Follow-up Consultation Needed',
-            "{$doctorName} recommends a follow-up for {$ptName} on {$fmtFollowUp}. Please schedule the appointment.",
+            "{$doctorName} recommends a follow-up for {$ptName} on {$fmtFollowUp}{$fmtFollowUpTime}. Please schedule the appointment.",
             $patientId
         );
     }

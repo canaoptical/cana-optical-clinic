@@ -7,7 +7,13 @@ html, body { color: var(--text); background: var(--white); }
 .section-title { font-size: 2rem; font-weight: 700; color: var(--text); line-height: 1.15; letter-spacing: -0.03em; margin-bottom: 14px; }
 .section-desc { font-size: 0.9rem; color: var(--muted); line-height: 1.7; }
 
-.services-grid { --bs-gutter-x: 0; --bs-gutter-y: 0; margin: -10px -10px 48px; }
+/* justify-content:center only actually affects an incomplete last row —
+   a full row of columns already sums to 100% width regardless (4 cols ×
+   25% each), so this has no visible effect there. It's here specifically
+   so a trailing row of 1-3 cards (whatever's left over after however many
+   services divide evenly into the grid) centers itself instead of sitting
+   flush left with empty space to its right. */
+.services-grid { --bs-gutter-x: 0; --bs-gutter-y: 0; margin: -10px -10px 48px; justify-content: center; }
 .services-grid > .col { padding: 10px; display: flex; align-items: stretch; }
 .service-card { background: var(--white); border-radius: 12px; padding: 24px; border: 1px solid var(--border); transition: transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.35s cubic-bezier(0.25,0.46,0.45,0.94), border-color 0.35s ease; position: relative; overflow: hidden; width: 100%; min-height: 200px; display: flex; flex-direction: column; }
 .service-card::before { content: ''; position: absolute; inset: 0; background: rgba(232,137,28,0.10); opacity: 0; transition: opacity 0.35s ease; pointer-events: none; }
@@ -19,8 +25,6 @@ html, body { color: var(--text); background: var(--white); }
 .service-icon-wrap svg { width: 20px; height: 20px; stroke: var(--orange); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.35s ease; position: relative; z-index: 1; }
 .service-card:hover .service-icon-wrap svg { stroke: white; }
 .service-title { font-size: 0.92rem; font-weight: 700; color: var(--text); margin-bottom: 8px; line-height: 1.3; min-height: 2.6em; }
-.service-duration { font-size: 0.72rem; font-weight: 600; color: var(--orange); display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
-.service-duration svg { width: 12px; height: 12px; stroke: var(--orange); fill: none; stroke-width: 2; flex-shrink: 0; }
 .service-desc  { font-size: 0.78rem; color: var(--muted); line-height: 1.65; flex: 1; }
 
 /* Why Choose Us strip — matches .service-card design exactly */

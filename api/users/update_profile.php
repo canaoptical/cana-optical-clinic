@@ -33,6 +33,9 @@ $email  = trim($b['email']      ?? '');
 if (!$fn || !$ln) {
     jsonResponse(['success' => false, 'message' => 'First and last name are required.']);
 }
+if ($phone && !isValidContact($phone)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
 
 $table = $tableMap[$role];
 

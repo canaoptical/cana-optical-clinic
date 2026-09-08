@@ -39,7 +39,7 @@ $doctorId    = trim($b['doctorId']    ?? '');
 $doctorName  = trim($b['doctorName']  ?? '');
 $date        = trim($b['date']        ?? '');
 $time        = trim($b['time']        ?? '');
-$type        = trim($b['type']        ?? 'Eye Examination');
+$type        = trim($b['type']        ?? 'Comprehensive Eye Examination');
 $termsAgreed = !empty($b['termsAgreed']);
 
 if (!$doctorId || !$date || !$time) {
@@ -81,21 +81,6 @@ try {
             jsonResponse(['success' => false, 'message' => 'This doctor is unavailable on the selected date.']);
         }
 
-        // Same max-appointments-per-patient-per-day cap enforced in
-        // appointments/create.php and waitlist/respond.php's claim step —
-        // checked here too so a patient already at their limit for this
-        // date finds out immediately instead of joining a slot they'd
-        // never actually be allowed to claim later.
-        $maxPerPatientDay = (int)($pdo->query('SELECT max_appts_per_patient_per_day FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn() ?: 1);
-        $pcs = $pdo->prepare(
-            "SELECT COUNT(*) FROM appointments
-             WHERE patient_id = ? AND date = ? AND status NOT IN ('cancelled','disapproved')"
-        );
-        $pcs->execute([$patientId, $date]);
-        if ((int)$pcs->fetchColumn() >= $maxPerPatientDay) {
-            jsonResponse(['success' => false, 'message' =>
-                'You already have ' . ($maxPerPatientDay === 1 ? 'an appointment' : $maxPerPatientDay . ' appointments') . ' scheduled for this date, so you can\'t join the waitlist for another slot that day.']);
-        }
     }
 
     // One active waitlist entry per patient, app-wide.
@@ -111,8 +96,8 @@ try {
     // Re-verify the slot is genuinely unavailable — a stale frontend
     // shouldn't be able to waitlist an actually-open slot.
     $durStr = $pdo->query('SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn();
-    preg_match('/(\d+)/', $durStr ?: '30', $dm);
-    $durationMin = isset($dm[1]) ? (int)$dm[1] : 30;
+    preg_match('/(\d+)/', $durStr ?: '45', $dm);
+    $durationMin = isset($dm[1]) ? (int)$dm[1] : 45;
     $conflict = checkApptConflict($pdo, $doctorId, $date, $time, $durationMin);
     $held     = checkWaitlistHold($pdo, $doctorId, $date, $time, $patientId);
     if ($conflict === null && !$held) {

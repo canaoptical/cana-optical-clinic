@@ -231,10 +231,13 @@ function apptActions(a, role, hidePatient = false) {
         ${!a.doctorId ? `
           <button class="btn-icon" title="Assign Optometrist" style="color:#E8760A" onclick="window.openAssignDoctorModal('${a.id}')">${ic('users','icon-sm')}</button>` : ''}
         ${a.status === 'pending' ? `
-          <button class="btn-icon" title="Approve" style="color:#059669" onclick="window.approveAppt('${a.id}')">${ic('check','icon-sm')}</button>
+          <button class="btn-icon" title="Approve" style="color:#059669" onclick="window.approveAppt('${a.id}',this)">${ic('check','icon-sm')}</button>
           <button class="btn-icon" title="Disapprove" style="color:#991b1b" onclick="window.confirmDisapproveAppt('${a.id}')">${ic('x-circle','icon-sm')}</button>` : ''}
         ${a.status === 'approved' ? `
-          <button class="btn-icon" title="Mark Completed" style="color:#059669" onclick="window.markApptCompleted('${a.id}')">${ic('check-circle','icon-sm')}</button>
+          <!-- No "Mark Completed" here — see actionBtns' matching comment
+               in viewAppt() (main.js): completion happens automatically
+               once the doctor saves an exam against this appointment, not
+               by admin/staff flipping the status by hand. -->
           <button class="btn-icon" title="Mark No-Show" style="color:#6D28D9" onclick="window.confirmMarkNoShow('${a.id}')">${ic('user-x','icon-sm')}</button>
           <button class="btn-icon" title="Reschedule" style="color:#D97706" onclick="window.rescheduleAppt('${a.id}')">${ic('refresh-cw','icon-sm')}</button>
           <button class="btn-icon" title="Cancel" style="color:#DC2626" onclick="window.confirmCancelAppt('${a.id}')">${ic('x','icon-sm')}</button>` : ''}
@@ -551,6 +554,9 @@ function pageAdminDashboard() {
         <button class="btn-secondary" title="Print a table-only version of this dashboard" onclick="window.printDashboardReport()">
           ${ic('printer','icon-sm')} Print Report
         </button>
+        <button class="btn-secondary" title="Download this dashboard as a PDF" onclick="window.downloadDashboardReportPDF(this)">
+          ${ic('download','icon-sm')} Download PDF
+        </button>
         <button class="btn-secondary" onclick="window.navigate('waitlist')">
           ${ic('clock','icon-sm')} Waitlist
           ${window._waitlistCount > 0 ? `<span class="nav-badge">${window._waitlistCount > 99 ? '99+' : window._waitlistCount}</span>` : ''}
@@ -860,19 +866,21 @@ function pagePatientView() {
   const consultationsPanel = sortedCons.length ? `
     <div class="table-wrap" style="box-shadow:none;border:1px solid #f3f4f6">
       ${sortedCons.map((c,i) => `
-      <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;${i!==sortedCons.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
+      <div class="record-row" style="${i!==sortedCons.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
         <div style="text-align:center;min-width:38px;flex-shrink:0">
           <div style="font-size:1.05rem;font-weight:800;color:#1C1C1C;line-height:1">${new Date(c.date+'T00:00:00').getDate()}</div>
           <div style="font-size:.58rem;text-transform:uppercase;font-weight:600;color:#9CA3AF;margin-top:1px">${new Date(c.date+'T00:00:00').toLocaleString('en',{month:'short'})}</div>
           <div style="font-size:.58rem;color:#C4C9D0">${new Date(c.date+'T00:00:00').getFullYear()}</div>
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
+        <div class="record-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.chiefComplaint || 'No chief complaint recorded'}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${c.doctor}${c.type ? ' &bull; ' + c.type : ''}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        <button class="btn-icon" title="View Details" onclick="window.viewConsultationDetail('${p.id}','${c.id}')">${ic('eye','icon-sm')}</button>
+        <div class="record-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
+          <button class="btn-icon" title="View Details" onclick="window.viewConsultationDetail('${p.id}','${c.id}')">${ic('eye','icon-sm')}</button>
+        </div>
       </div>`).join('')}
     </div>` : emptyState('message-square', 'No consultation records', 'No consultation records on file.')
 
@@ -888,22 +896,23 @@ function pagePatientView() {
           : (() => { const d = new Date(rx.date.includes('T') ? rx.date : rx.date+'T00:00:00'); d.setFullYear(d.getFullYear()+1); return d })()
         const isExpired = rx.status === 'expired' || (rx.status !== 'superseded' && expDate < new Date())
         return `
-      <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;${i!==sortedRx.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
+      <div class="record-row" style="${i!==sortedRx.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
         <div style="text-align:center;min-width:38px;flex-shrink:0">
           <div style="font-size:1.05rem;font-weight:800;color:#1C1C1C;line-height:1">${new Date(rx.date+'T00:00:00').getDate()}</div>
           <div style="font-size:.58rem;text-transform:uppercase;font-weight:600;color:#9CA3AF;margin-top:1px">${new Date(rx.date+'T00:00:00').toLocaleString('en',{month:'short'})}</div>
           <div style="font-size:.58rem;color:#C4C9D0">${new Date(rx.date+'T00:00:00').getFullYear()}</div>
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
+        <div class="record-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rx.id} &bull; ${rx.doctor}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${rx.lensType && rx.lensType !== '—' ? rx.lensType : 'No lens type on file'}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        <span style="font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;${isExpired ? 'background:#FEE2E2;color:#DC2626;border:1px solid #FECACA' : 'background:#ECFDF5;color:#059669;border:1px solid #A7F3D0'}">${isExpired ? 'Expired' : 'Valid'}</span>
-        <div style="display:flex;gap:4px;flex-shrink:0">
+        <div class="record-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
+          <span style="font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;${isExpired ? 'background:#FEE2E2;color:#DC2626;border:1px solid #FECACA' : 'background:#ECFDF5;color:#059669;border:1px solid #A7F3D0'}">${isExpired ? 'Expired' : 'Valid'}</span>
           <button class="btn-icon" title="View Prescription" onclick="window.viewPrescriptionDetail('${p.id}','${rx.id}')">${ic('eye','icon-sm')}</button>
           <button class="btn-icon" title="Print" onclick="window.printRxRecord('${p.id}','${rx.id}')">${ic('printer','icon-sm')}</button>
+          <button class="btn-icon" title="Download PDF" onclick="window.downloadRxRecordPDF('${p.id}','${rx.id}',this)">${ic('download','icon-sm')}</button>
         </div>
       </div>`}).join('')}
     </div>` : emptyState('file-text', 'No prescriptions on file', 'No prescription records on file for this patient.')
@@ -913,28 +922,30 @@ function pagePatientView() {
   const examsContent = sortedExams.length ? `
     <div class="table-wrap" style="box-shadow:none;border:1px solid #f3f4f6">
       ${sortedExams.map((e,i) => `
-      <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;${i!==sortedExams.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
+      <div class="record-row" style="${i!==sortedExams.length-1?'border-bottom:1px solid #F3F4F6;':''}${i===0?'background:#FAFAF8;':''}">
         <div style="text-align:center;min-width:38px;flex-shrink:0">
           <div style="font-size:1.05rem;font-weight:800;color:#1C1C1C;line-height:1">${new Date(e.date+'T00:00:00').getDate()}</div>
           <div style="font-size:.58rem;text-transform:uppercase;font-weight:600;color:#9CA3AF;margin-top:1px">${new Date(e.date+'T00:00:00').toLocaleString('en',{month:'short'})}</div>
           <div style="font-size:.58rem;color:#C4C9D0">${new Date(e.date+'T00:00:00').getFullYear()}</div>
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
+        <div class="record-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.diagnosis || 'No diagnosis recorded'}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${e.doctor}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        <button class="btn-icon" title="View Results" onclick="window.viewExamDetail('${p.id}','${e.id}')">${ic('eye','icon-sm')}</button>
-        ${(role === 'doctor' && e.doctor === user?.name) ? `
-        <button class="btn-ghost" onclick="window.navigate('edit-examination',{patientId:'${p.id}',examId:'${e.id}'})"
-          style="font-size:.72rem;padding:4px 10px;flex-shrink:0;white-space:nowrap">${ic('edit','icon-sm')} Edit</button>`
-        : (role !== 'patient' ? `
-        <button class="btn-ghost" title="${role === 'doctor' ? `Only ${e.doctor} can edit this record` : 'Only the assigned doctor can edit this record'}" onclick="window.navigate('examination',{patientId:'${p.id}',examId:'${e.id}'})"
-          style="font-size:.72rem;padding:4px 10px;flex-shrink:0;white-space:nowrap;color:#9CA3AF">${ic('lock','icon-sm')} View Only</button>` : '')}
-        ${(role === 'admin' || role === 'staff' || (role === 'doctor' && e.doctor === user?.name)) ? `
-        <button class="btn-icon" title="Archive" style="color:#d97706;border-color:#fef3c7"
-                onclick="window.confirmDeleteExam('${e.id}','${p.id}','${p.name.replace(/'/g,"\\'")}')">${ic('archive','icon-sm')}</button>` : ''}
+        <div class="record-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
+          <button class="btn-icon" title="View Results" onclick="window.viewExamDetail('${p.id}','${e.id}')">${ic('eye','icon-sm')}</button>
+          ${(role === 'doctor' && e.doctor === user?.name) ? `
+          <button class="btn-ghost" onclick="window.navigate('edit-examination',{patientId:'${p.id}',examId:'${e.id}'})"
+            style="font-size:.72rem;padding:4px 10px;flex-shrink:0;white-space:nowrap">${ic('edit','icon-sm')} Edit</button>`
+          : (role !== 'patient' ? `
+          <button class="btn-ghost" title="${role === 'doctor' ? `Only ${e.doctor} can edit this record` : 'Only the assigned doctor can edit this record'}" onclick="window.navigate('examination',{patientId:'${p.id}',examId:'${e.id}'})"
+            style="font-size:.72rem;padding:4px 10px;flex-shrink:0;white-space:nowrap;color:#9CA3AF">${ic('lock','icon-sm')} View Only</button>` : '')}
+          ${(role === 'admin' || role === 'staff' || (role === 'doctor' && e.doctor === user?.name)) ? `
+          <button class="btn-icon" title="Archive" style="color:#d97706;border-color:#fef3c7"
+                  onclick="window.confirmDeleteExam('${e.id}','${p.id}','${p.name.replace(/'/g,"\\'")}')">${ic('archive','icon-sm')}</button>` : ''}
+        </div>
       </div>`).join('')}
     </div>` : emptyState('eye', 'No examination records', 'No examination records on file.')
 
@@ -1107,6 +1118,10 @@ function pagePatientView() {
                 <div class="info-key">${k}</div>
                 <div class="info-val">${v}</div>
               </div>`).join('')}
+            <div class="info-item" style="grid-column:1/-1">
+              <div class="info-key">Medical History</div>
+              <div class="info-val" style="white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : '—'}</div>
+            </div>
           </div>`, true)}
 
         ${panel('history', `
@@ -1660,6 +1675,16 @@ function pageSchedule() {
               <div style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:#6B7280">
                 <div style="width:10px;height:10px;background:#FEE2E2;border:1.5px solid #B91C1C;border-radius:2px"></div>Blocked
               </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:#6B7280">
+                <div style="width:10px;height:10px;background:#FFF1F2;border:1.5px solid #fda4af;border-radius:2px"></div>PH Holiday
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:#6B7280">
+                <div style="width:6px;height:6px;border-radius:50%;background:#065F46;opacity:.6;margin:3px"></div> Has Appointments
+                <!-- The real dot (.has-appts::before, global.css) uses
+                     currentColor, so it actually takes on whatever text
+                     color the day already has (green on Available, red on
+                     Blocked/Holiday) — this swatch shows the common case. -->
+              </div>
             </div>
           </div>
         </div>
@@ -1759,7 +1784,16 @@ function pageAdminReports() {
       window.toast('Report exported as CSV.', 'success')
     }
 
-    window.printReport = () => {
+    // Builds the report's full printable HTML document + a filename
+    // following the app-wide CanaOpticalClinic-{Type}-{Identifier}.pdf
+    // convention (_pdfFilename(), main.js). Returns null (after its own
+    // toast) when there's nothing to build — printReport() and
+    // downloadReportPDF() below are both thin wrappers over this: the
+    // former hands the full document to _printHtmlDocument(), the latter
+    // extracts just <body>'s content and hands that to
+    // _downloadLiveContentAsPdf() (styled by the permanent
+    // .pdf-report-doc rules in global.css).
+    window._buildReportHtml = (action = 'print') => {
       const table = document.querySelector('#rpt-table-area table')
       if (!table) {
         // Same distinction as exportReportCSV() above — a generated report
@@ -1767,9 +1801,9 @@ function pageAdminReports() {
         // a report first" is actively wrong to tell someone who just did.
         const generated = document.getElementById('rpt-table-header')?.style.display === 'block'
         window.toast(generated
-          ? 'This report has no records to print.'
-          : 'Generate a report first, then print.', 'error')
-        return
+          ? `This report has no records to ${action}.`
+          : `Generate a report first, then ${action}.`, 'error')
+        return null
       }
 
       const typeLabel = document.getElementById('rpt-type-text')?.textContent || 'Report'
@@ -1951,7 +1985,26 @@ function pageAdminReports() {
 </body>
 </html>`
 
-      window._printHtmlDocument(html)
+      const dateSeg = (from && to) ? `${from}-to-${to}` : from ? `from-${from}` : 'All-Dates'
+      return { html, filename: window._pdfFilename(typeLabel, dateSeg) }
+    }
+
+    window.printReport = () => {
+      const built = window._buildReportHtml('print')
+      if (built) window._printHtmlDocument(built.html)
+    }
+
+    window.downloadReportPDF = () => {
+      const built = window._buildReportHtml('download')
+      if (!built) return
+      // _buildReportHtml() still builds a full standalone document for
+      // _printHtmlDocument()'s own use — only <body>'s inner content is
+      // needed here, styled instead by the permanent .pdf-report-doc
+      // rules in global.css (same architecture as
+      // downloadExamRecordPDF(), main.js).
+      const bodyMatch = built.html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+      if (!bodyMatch) { window.toast('Could not generate the PDF.', 'error'); return }
+      window._downloadLiveContentAsPdf(bodyMatch[1], 'pdf-report-doc', built.filename, document.getElementById('rpt-download-btn'))
     }
 
   }
@@ -2157,7 +2210,7 @@ function pageAdminSettings() {
               </div>
               <div class="form-group">
                 <label class="form-label">Phone Number</label>
-                <input class="form-input" id="ad-phone" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${adm.contact || ''}">
+                <input class="form-input" id="ad-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${adm.contact || ''}">
               </div>
             </div>
             <div style="display:flex;justify-content:flex-end;margin-top:4px">
@@ -2399,15 +2452,22 @@ function pageAdminSettings() {
             <input class="form-input" id="svc-desc" placeholder="Brief description of the service">
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">Duration (minutes)</label>
-            <input class="form-input" type="number" id="svc-duration" value="30" min="5" max="240">
-          </div>
+        <div class="form-row-3">
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Status</label>
             ${window.selectFieldHtml('svc-status', { value: 'active', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] })}
           </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Bookable</label>
+            ${window.selectFieldHtml('svc-bookable', { value: '1', options: [{ value: '1', label: 'Yes — offered as an appointment type' }, { value: '0', label: 'No — display only' }] })}
+          </div>
+          <div class="form-group" style="margin-bottom:0" id="svc-patient-visible-wrap">
+            <label class="form-label">Patient Visible</label>
+            ${window.selectFieldHtml('svc-patient-visible', { value: '1', options: [{ value: '1', label: 'Yes — shown to patients too' }, { value: '0', label: 'No — staff/admin only' }] })}
+          </div>
+        </div>
+        <div style="font-size:.72rem;color:#9CA3AF;margin-top:8px">
+          Bookable services appear as an appointment type on Book Appointment. Patient Visible controls the public Services page too — turn it off for an internal, staff-only type (like Follow-up Consultation); turn Bookable off instead for a service you only want to list publicly, not offer online.
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:16px">
           <button class="btn-primary" onclick="window.addService()">
@@ -2487,7 +2547,7 @@ function pageAdminSettings() {
         <div class="form-row-2">
           <div class="form-group" style="margin-bottom:12px">
             <label class="form-label">Default Consultation Duration</label>
-            ${window.selectFieldHtml('cs-duration', { value: cs.defaultDuration || '40 min', options: durationOpts })}
+            ${window.selectFieldHtml('cs-duration', { value: cs.defaultDuration || '45 min', options: durationOpts })}
             <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">Default time allocated per appointment slot.</div>
           </div>
           <div class="form-group" style="margin-bottom:12px">
@@ -2504,11 +2564,6 @@ function pageAdminSettings() {
             <label class="form-label">Max Appointments Per Doctor Per Day</label>
             <input class="form-input" type="number" id="cs-max-appt" value="${cs.maxApptsPerDoctorPerDay}" min="1" max="50">
             <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">Limits the number of appointments a doctor can receive per day.</div>
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">Max Appointments Per Patient Per Day</label>
-            <input class="form-input" type="number" id="cs-max-appt-patient" value="${cs.maxApptsPerPatientPerDay}" min="1" max="10">
-            <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">Limits how many appointments one patient can book for the same day (self-service bookings only).</div>
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Reminder Send Time</label>
@@ -2918,6 +2973,9 @@ function pageStaffDashboard() {
         <button class="btn-secondary" title="Print a table-only version of this dashboard" onclick="window.printDashboardReport()">
           ${ic('printer','icon-sm')} Print Report
         </button>
+        <button class="btn-secondary" title="Download this dashboard as a PDF" onclick="window.downloadDashboardReportPDF(this)">
+          ${ic('download','icon-sm')} Download PDF
+        </button>
         <button class="btn-secondary" onclick="window.navigate('waitlist')">
           ${ic('clock','icon-sm')} Waitlist
           ${window._waitlistCount > 0 ? `<span class="nav-badge">${window._waitlistCount > 99 ? '99+' : window._waitlistCount}</span>` : ''}
@@ -2963,9 +3021,14 @@ function pageDoctorDashboard() {
       <p class="page-subtitle">Here's your clinic overview for today.</p>
     </div>
     <div class="page-header-right">
-      <button class="btn-secondary" title="Print a table-only version of this dashboard" onclick="window.printDashboardReport()">
-        ${ic('printer','icon-sm')} Print Report
-      </button>
+      <div class="page-header-btn-group" style="display:flex;gap:10px">
+        <button class="btn-secondary" title="Print a table-only version of this dashboard" onclick="window.printDashboardReport()">
+          ${ic('printer','icon-sm')} Print Report
+        </button>
+        <button class="btn-secondary" title="Download this dashboard as a PDF" onclick="window.downloadDashboardReportPDF(this)">
+          ${ic('download','icon-sm')} Download PDF
+        </button>
+      </div>
       <span style="font-size:.78rem;color:#9CA3AF">${dateStr}</span>
     </div>
   </div>
@@ -3209,28 +3272,33 @@ function pageDoctorSchedule() {
 
     <!-- Doctor Info Card -->
     <div class="card" style="margin-bottom:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.07)">
-      <div class="card-body" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div class="card-body" style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
         <div class="profile-avatar-lg" style="width:56px;height:56px;font-size:1.2rem;flex-shrink:0;overflow:hidden">${
           doc.photoUrl
             ? `<img src="${doc.photoUrl}" alt="${doc.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(doc.name)}">`
             : initials(doc.name)
         }</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:1rem;font-weight:700;color:#1C1C1C">${doc.name}</div>
+        <div style="flex:1;min-width:220px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="font-size:1rem;font-weight:700;color:#1C1C1C">${doc.name}</div>
+            <span style="background:#dcfce7;color:#16a34a;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 10px;border-radius:20px">Active</span>
+          </div>
           <div style="font-size:.82rem;color:#6B7280;margin-top:2px">${doc.specialization}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:10px">
-            <span style="font-size:.78rem;color:#6B7280;display:flex;align-items:center;gap:5px">
-              ${ic('calendar','icon-sm')} Available: ${(doc.days || []).join(', ')}
-            </span>
-            <span style="font-size:.78rem;color:#6B7280;display:flex;align-items:center;gap:5px">
-              ${ic('clock','icon-sm')} ${doc.hours}
-            </span>
-            <span style="font-size:.78rem;color:#6B7280;display:flex;align-items:center;gap:5px">
-              ${ic('mail','icon-sm')} ${doc.email}
-            </span>
+          ${dayPills(doc.days)}
+          <div style="display:flex;flex-wrap:wrap;gap:28px;margin-top:14px">
+            ${[
+              [ic('clock','icon-sm'), 'Consultation Hours', doc.hours],
+              [ic('mail','icon-sm'),  'Email',               doc.email],
+            ].map(([iconHtml, label, val]) => `
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="color:#9CA3AF;flex-shrink:0;display:flex">${iconHtml}</span>
+              <div>
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:3px">${label}</div>
+                <div style="font-size:.82rem;font-weight:600;color:#1f2937;line-height:1.2">${val}</div>
+              </div>
+            </div>`).join('')}
           </div>
         </div>
-        <span style="background:#dcfce7;color:#16a34a;font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:20px">Active</span>
       </div>
     </div>
 
@@ -3388,7 +3456,7 @@ function pageDoctorSettings() {
             </div>
             <div class="form-group">
               <label class="form-label">Phone Number</label>
-              <input class="form-input" id="doc-phone" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${doc.contact || ''}">
+              <input class="form-input" id="doc-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${doc.contact || ''}">
             </div>
           </div>
           <div class="form-row-2">
@@ -3688,6 +3756,10 @@ function pageExamRecords() {
                         onclick="window.printExamRecord('${e.id}')">
                   ${ic('printer','icon-sm')}
                 </button>
+                <button class="btn-icon" title="Download PDF"
+                        onclick="window.downloadExamRecordPDF('${e.id}',this)">
+                  ${ic('download','icon-sm')}
+                </button>
                 <button class="btn-icon" title="${(role === 'doctor' && e.doctor === user?.name) ? 'Edit' : `View only, only ${e.doctor} can edit this record`}"
                         onclick="window.navigate('${(role === 'doctor' && e.doctor === user?.name) ? 'edit-examination' : 'examination'}',{patientId:'${e.patientId}',examId:'${e.id}'})">
                   ${ic((role === 'doctor' && e.doctor === user?.name) ? 'edit' : 'lock','icon-sm')}
@@ -3899,6 +3971,19 @@ function pageNewExamination() {
   </div>
   <div id="wiz-step-label" style="display:none;font-size:.8rem;font-weight:600;color:#6b7280;text-align:center;padding:6px 0 12px">Step 1 of 7: Patient Info</div>`
 
+  // Same derivation saveNewExam() (main.js) uses to decide what actually
+  // gets submitted: from the linked appointment when starting fresh from
+  // one (window._examApptId, set by startExamFromAppt()), from the exam's
+  // own already-saved consultation when editing, or the same default for
+  // a standalone exam with neither. Shown read-only below (Step 1) rather
+  // than as an editable field — see that function's own comment for why
+  // this isn't something the doctor re-enters by hand: it's already fixed
+  // by whatever the visit was actually booked/logged as.
+  const linkedApptForType = window._examApptId ? appointments.find(a => a.id === window._examApptId) : null
+  const linkedConForType  = specificExam?.consultationId ? (p.consultations || []).find(c => c.id === specificExam.consultationId) : null
+  const serviceType = linkedApptForType?.type || linkedConForType?.type || 'Comprehensive Eye Examination'
+  const examRequiresDiagnosis = !(window.NON_EXAM_SERVICE_TYPES || []).includes(serviceType)
+
   // ── Step 1: Patient Information ──────────────────────────────
   const step1 = `
   <div style="background:white;border-radius:12px;border:1px solid #e5e7eb;padding:28px">
@@ -3912,6 +3997,10 @@ function pageNewExamination() {
     <div class="form-group" style="margin-bottom:16px">
       ${fl('Patient Name', true)}
       <input id="ne-patient-name" class="form-input" style="${inp}" value="${p.name}" placeholder="e.g. Juan Dela Cruz">
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      ${fl('Service Type')}
+      <input class="form-input" style="${inp};background:#F9FAFB;color:#374151;cursor:not-allowed" value="${esc(serviceType)}" disabled readonly>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
       <div class="form-group" style="margin:0">
@@ -3933,9 +4022,21 @@ function pageNewExamination() {
         <input id="ne-contact" class="form-input" style="${inp}" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${p.contact || ''}" placeholder="09XX XXX XXXX">
       </div>
     </div>
-    <div class="form-group" style="margin:0">
+    <div class="form-group" style="margin-bottom:16px">
       ${fl('Company / Employer')}
       <input id="ne-employer" class="form-input" style="${inp}" value="${p.occupation || ''}" placeholder="Optional">
+    </div>
+    <!-- Read-only reference for the doctor — not part of this visit's own
+         record (medical history lives on the patient's profile, edited via
+         Add/Edit Patient or the patient's own Settings), just surfaced here
+         so it's in view while examining regardless of what this particular
+         visit's service type is. -->
+    <div style="background:#eff6ff;border-left:3px solid #3b82f6;border-radius:8px;padding:12px 16px;display:flex;align-items:flex-start;gap:10px">
+      <span style="flex-shrink:0;display:flex;margin-top:2px;color:#3b82f6">${ic('clipboard','icon-sm')}</span>
+      <div style="min-width:0">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#1e40af;margin-bottom:4px">Medical History</div>
+        <div style="font-size:.82rem;color:#1e3a5f;line-height:1.5;white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : 'No medical history on file.'}</div>
+      </div>
     </div>
   </div>`
 
@@ -3945,16 +4046,20 @@ function pageNewExamination() {
   // consultation already linked to this exam when editing.
   const linkedConsultation = specificExam?.consultationId
     ? (p.consultations || []).find(c => c.id === specificExam.consultationId) : null
-  const preCon = linkedConsultation || { type:'Eye Examination', chiefComplaint:'', historyPresentIllness:'', assessment:'', recommendation:'', followUpDate:'', status:'completed' }
+  const preCon = linkedConsultation || { type:'Comprehensive Eye Examination', chiefComplaint:'', historyPresentIllness:'', assessment:'', recommendation:'', followUpDate:'', followUpTime:'', status:'completed' }
   const needsFollowUpByDefault = !!preCon.followUpDate
+  const preFollowUpLabel = preCon.followUpDate
+    ? new Date(preCon.followUpDate+'T00:00:00').toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}) + (preCon.followUpTime ? ` at ${preCon.followUpTime}` : '')
+    : 'Select date & time'
 
   // Follow-up Date is only ever a suggested target, not a real booked
   // slot — setting it just notifies admin/staff to go schedule the actual
   // appointment, and THAT flow already fully validates clinic days,
-  // blocked dates, and every other booking rule. Restricting the doctor's
-  // suggestion to only-bookable days here would just be re-solving a
-  // problem the real booking step already handles once a human is looking
-  // at it — so this stays simple: no past dates, otherwise unrestricted.
+  // blocked dates, and every other booking rule. The picker below (see
+  // openFollowUpPicker(), main.js) still rules out blocked dates/times
+  // itself, same as a reschedule — not to hard-book anything here, just so
+  // what the doctor recommends is realistic from the moment it's made
+  // instead of staff discovering it isn't available only once they act on it.
 
   const step2 = `
   <div style="background:white;border-radius:12px;border:1px solid #e5e7eb;padding:28px">
@@ -3991,10 +4096,16 @@ function pageNewExamination() {
             </span>No</label>
         </div>
       </div>
-      <div id="ne-followup-date-wrap" style="width:220px;${needsFollowUpByDefault ? '' : 'display:none'}">
+      <div id="ne-followup-date-wrap" style="flex:1 1 300px;min-width:260px;max-width:360px;${needsFollowUpByDefault ? '' : 'display:none'}">
         <div class="form-group" style="margin:0">
-          ${fl('Follow-up Date')}
-          ${window.dateFieldHtml('ne-con-followup', { value: preCon.followUpDate || '', style: inp + ';height:40px', max: 'none', min: today })}
+          ${fl('Follow-up Date & Time')}
+          <input type="hidden" id="ne-con-followup" value="${preCon.followUpDate || ''}">
+          <input type="hidden" id="ne-con-followup-time" value="${preCon.followUpTime || ''}">
+          <button type="button" class="form-input" style="${inp};height:40px;text-align:left;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%"
+                  onclick="window.openFollowUpPicker()">
+            <span id="ne-followup-picker-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${needsFollowUpByDefault ? '#1C1C1C' : '#9CA3AF'}">${preFollowUpLabel}</span>
+            <span style="color:#9CA3AF;flex-shrink:0;display:flex">${ic('calendar','icon-sm')}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -4078,8 +4189,9 @@ function pageNewExamination() {
       </div>
     </div>
     <div class="form-group" style="margin-bottom:16px">
-      ${fl('Diagnosis', true)}
-      <input id="ne-diagnosis" class="form-input" style="${inp}" value="${lastExam?.diagnosis || ''}" placeholder="e.g. Myopia with mild astigmatism">
+      ${fl('Diagnosis', examRequiresDiagnosis)}
+      <input id="ne-diagnosis" class="form-input" style="${inp}" value="${lastExam?.diagnosis || ''}" placeholder="${examRequiresDiagnosis ? 'e.g. Myopia with mild astigmatism' : 'Optional for ' + esc(serviceType)}">
+      ${!examRequiresDiagnosis ? `<div style="font-size:.72rem;color:#9ca3af;margin-top:6px">${serviceType} is a dispensing visit, not a clinical exam — a diagnosis isn't required to complete it.</div>` : ''}
     </div>
     <div class="form-group" style="margin-bottom:18px">
       ${fl('Ishihara Test Result')}
@@ -4585,13 +4697,13 @@ function pagePatientExamHistory() {
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
         <!-- Info -->
-        <div style="flex:1;min-width:0">
+        <div class="hist-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.diagnosis}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${e.doctor}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        ${badge(e.status || 'completed')}
-        <div style="display:flex;gap:4px;flex-shrink:0">
+        <div class="hist-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
+          ${badge(e.status || 'completed')}
           <button class="btn-icon" title="View Results" onclick="window.viewExamDetail('${user.id}','${e.id}')">
             ${ic('eye','icon-sm')}
           </button>
@@ -4755,10 +4867,14 @@ function pagePatientDashboard() {
 // ════════════════════════════════════════════════════════════════
 function appointmentWizardHtml(mode) {
   const isStaff = mode === 'staff'
-  // Follow-up Consultation is for staff/admin to schedule on a patient's
-  // behalf after reviewing their case — not something a patient should be
-  // able to self-select when requesting their own first-time visit.
-  const bookableServices = CLINIC_SERVICES.filter(s => s.status === 'active' && (isStaff || s.name !== 'Follow-up Consultation'))
+  // `bookable` — offered as a selectable appointment type at all (a
+  // display-only service like Slit Lamp Examination never shows here).
+  // `patientVisible` — patients themselves can pick it; staff/admin see
+  // every bookable service regardless (e.g. Follow-up Consultation, for
+  // scheduling on a patient's behalf after reviewing their case — not
+  // something a patient should self-select when requesting their own
+  // first-time visit). See clinic_services' own column comments (schema.sql).
+  const bookableServices = CLINIC_SERVICES.filter(s => s.status === 'active' && s.bookable && (isStaff || s.patientVisible))
   const _minAdv = minAdvanceDays()
   // Staff/admin retain discretion over booking-window timing (see
   // amcRender()'s own tooSoon check, main.js — same role-based exception
@@ -5138,7 +5254,6 @@ function appointmentWizardHtml(mode) {
                 <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
                   <span style="color:#E8760A">${ic(s.icon || 'eye','icon-sm')}</span>
                   <span style="font-size:.83rem;font-weight:600;color:#1C1C1C">${s.name}</span>
-                  ${s.duration ? `<span style="margin-left:auto;font-size:.66rem;font-weight:700;color:#9CA3AF;white-space:nowrap;flex-shrink:0">~${s.duration} min</span>` : ''}
                 </div>
                 <div style="font-size:.73rem;color:#9CA3AF;line-height:1.4">${s.description}</div>
               </button>`).join('')}
@@ -5515,12 +5630,12 @@ function pagePatientConsultations() {
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
         <!-- Info -->
-        <div style="flex:1;min-width:0">
+        <div class="hist-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.chiefComplaint || 'No chief complaint recorded'}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${c.doctor}${c.type ? ' &bull; ' + c.type : ''}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        <div style="display:flex;gap:4px;flex-shrink:0">
+        <div class="hist-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
           <button class="btn-icon" title="View Details" onclick="window.viewConsultationDetail('${user.id}','${c.id}')">
             ${ic('eye','icon-sm')}
           </button>
@@ -5726,7 +5841,7 @@ function pageStaffSettings() {
             </div>
             <div class="form-group">
               <label class="form-label">Phone Number</label>
-              <input class="form-input" id="st-phone" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${staffMember.contact || ''}">
+              <input class="form-input" id="st-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${staffMember.contact || ''}">
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;margin-top:4px">
@@ -5916,6 +6031,10 @@ function renderRxDocumentCard(rx, patient, isFeatured) {
         ${window.state?.role !== 'patient' ? `
         <div style="display:flex;gap:8px">
           <button class="btn-secondary" style="font-size:.78rem;padding:5px 12px"
+                  onclick="window.downloadRxRecordPDF('${patient.id}','${rx.id}',this)">
+            ${ic('download','icon-sm')} Download PDF
+          </button>
+          <button class="btn-secondary" style="font-size:.78rem;padding:5px 12px"
                   onclick="window.printRxRecord('${patient.id}','${rx.id}')">
             ${ic('printer','icon-sm')} Print Rx
           </button>
@@ -5982,13 +6101,13 @@ function pagePatientPrescriptions() {
         </div>
         <div style="width:1px;height:36px;background:#F3F4F6;flex-shrink:0"></div>
         <!-- Info -->
-        <div style="flex:1;min-width:0">
+        <div class="hist-row-info">
           <div style="font-size:.87rem;font-weight:700;color:#1C1C1C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rx.id} &bull; ${rx.doctor}</div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px">${rx.lensType && rx.lensType !== '—' ? rx.lensType : 'No lens type on file'}</div>
         </div>
-        ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
-        <span style="font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;${isExpired ? 'background:#FEE2E2;color:#DC2626;border:1px solid #FECACA' : 'background:#ECFDF5;color:#059669;border:1px solid #A7F3D0'}">${isExpired ? 'Expired' : 'Valid'}</span>
-        <div style="display:flex;gap:4px;flex-shrink:0">
+        <div class="hist-row-actions">
+          ${i===0 ? `<span style="background:#FFF7ED;color:#E8760A;font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #FDE68A;flex-shrink:0;white-space:nowrap">Latest</span>` : ''}
+          <span style="font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;${isExpired ? 'background:#FEE2E2;color:#DC2626;border:1px solid #FECACA' : 'background:#ECFDF5;color:#059669;border:1px solid #A7F3D0'}">${isExpired ? 'Expired' : 'Valid'}</span>
           <button class="btn-icon" title="View Prescription" onclick="window.viewPrescriptionDetail('${patient.id}','${rx.id}')">
             ${ic('eye','icon-sm')}
           </button>
@@ -6104,7 +6223,20 @@ function pagePatientSettings() {
 
   return `
   <style>
-    @media (min-width: 1024px) { .pt-sett-col { display: grid !important; grid-template-columns: 55fr 45fr; gap: 20px; align-items: start; } }
+    /* Danger Zone is last in the markup, after both columns, on every
+       breakpoint — on mobile .pt-sett-col is a plain flex-column so DOM
+       order alone stacks it last, below Email/Security/QR included. On
+       desktop, .pt-sett-left and .pt-sett-right sit side by side in row
+       1 (each sized purely by its own content, no shared-row coupling
+       between them), and .pt-sett-danger spans the full width as row 2
+       underneath — always the final, full-width section regardless of
+       breakpoint. */
+    @media (min-width: 1024px) {
+      .pt-sett-col { display: grid !important; grid-template-columns: 55fr 45fr; grid-template-rows: auto auto; gap: 20px; align-items: start; }
+      .pt-sett-left   { grid-column: 1; grid-row: 1; }
+      .pt-sett-right  { grid-column: 2; grid-row: 1; }
+      .pt-sett-danger { grid-column: 1 / -1; grid-row: 2; }
+    }
   </style>
   <div class="page-header">
     <div class="page-header-left">
@@ -6162,7 +6294,7 @@ function pagePatientSettings() {
     <div class="pt-sett-col" style="display:flex;flex-direction:column;gap:20px">
 
       <!-- LEFT column -->
-      <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="pt-sett-left" style="display:flex;flex-direction:column;gap:20px">
 
       <!-- Personal Information -->
       <div class="card" style="padding:28px">
@@ -6187,7 +6319,7 @@ function pagePatientSettings() {
           </div>
           <div class="form-group">
             <label class="form-label">Contact Number</label>
-            <input type="text" class="form-input" id="sett-contact" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${patient?.contact || ''}">
+            <input type="text" class="form-input" id="sett-contact" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${patient?.contact || ''}">
           </div>
           <div class="form-group">
             <label class="form-label">Complete Address</label>
@@ -6197,10 +6329,15 @@ function pagePatientSettings() {
             <label class="form-label">Occupation</label>
             <input type="text" class="form-input" placeholder="e.g. Teacher, Engineer, Student" value="${patient?.occupation || ''}" id="sett-occupation">
           </div>
+          <div class="form-group">
+            <label class="form-label">Medical History <span style="font-size:.75rem;color:#9CA3AF;font-weight:400">(optional)</span></label>
+            <textarea class="form-textarea" rows="3" placeholder="Conditions, allergies, ongoing medications, past eye surgeries, etc." id="sett-medical-history">${esc(patient?.medicalHistory || '')}</textarea>
+            <p style="margin:6px 0 0;font-size:.72rem;color:#9CA3AF">Shared with your doctor during examinations.</p>
+          </div>
           <div class="form-row-2">
             <div class="form-group">
               <label class="form-label">Date of Birth</label>
-              ${window.dobFieldHtml('sett-dob', { value: patient?.dob || '', max: window.maxDobFor18(), onchange: 'window._syncSettAge()' })}
+              ${window.dobFieldHtml('sett-dob', { value: patient?.dob || '', max: window.maxDobFor13(), onchange: 'window._syncSettAge()' })}
             </div>
             <div class="form-group">
               <label class="form-label" style="display:flex;align-items:center;gap:4px;color:#9CA3AF">
@@ -6228,41 +6365,10 @@ function pagePatientSettings() {
         </div>
       </div>
 
-      <!-- Danger Zone — self-service "Request Account Deletion". This only
-           ever sends a request to clinic staff (see api/patients/request-
-           deletion.php) — it never deletes anything itself. Staff review
-           and act on it from Patient Records, same as the rest of this
-           app's archive-before-permanent-delete flow. Stacked right below
-           Personal Information in the LEFT column (not a 3rd grid item)
-           so it sits close to the cards above it instead of dropping
-           below the taller RIGHT column. -->
-      <div class="card" style="padding:24px;border:1px solid #FECACA">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="color:#DC2626">${ic('user-x','icon-sm')}</div>
-          <div style="font-size:1.05rem;font-weight:700;color:#1C1C1C">Delete My Account</div>
-        </div>
-        ${user.deletionRequestedAt ? `
-        <div style="font-size:.82rem;color:#6B7280;line-height:1.6;margin-bottom:14px">
-          You requested account deletion on <strong>${new Date(user.deletionRequestedAt.replace(' ','T')).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}</strong>.
-          Clinic staff will review it${user.deletionRequestReason ? `, reason given: "${user.deletionRequestReason}"` : ''}.
-          You can cancel this request any time before it's acted on.
-        </div>
-        <button class="btn-secondary" id="pt-cancel-del-btn" onclick="window.cancelDeletionRequest(this)">
-          ${ic('x','icon-sm')} Cancel Request
-        </button>` : `
-        <div style="font-size:.82rem;color:#6B7280;line-height:1.6;margin-bottom:14px">
-          Requesting deletion does not remove anything immediately, it notifies clinic staff, who will review it.
-          Your account and records stay exactly as they are until staff acts on the request, and you can cancel it any time before then.
-        </div>
-        <button class="btn-secondary" style="color:#DC2626;border-color:#FECACA" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background=''" onclick="window.openRequestDeletionModal()">
-          ${ic('user-x','icon-sm')} Request Account Deletion
-        </button>`}
-      </div>
-
       </div>
 
       <!-- RIGHT column -->
-      <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="pt-sett-right" style="display:flex;flex-direction:column;gap:20px">
 
         <!-- Email Address Card — changing it is a separate, OTP-verified
              flow (openChangeEmailModal(), main.js) rather than a plain
@@ -6347,6 +6453,38 @@ function pagePatientSettings() {
           </button>
         </div>
 
+      </div>
+
+      <!-- Danger Zone — self-service "Request Account Deletion". This only
+           ever sends a request to clinic staff (see api/patients/request-
+           deletion.php) — it never deletes anything itself. Staff review
+           and act on it from Patient Records, same as the rest of this
+           app's archive-before-permanent-delete flow. Its own direct grid
+           item (pt-sett-danger, styled in this page's own <style> block
+           above), last in the markup after both columns, so it's always
+           the final section — full width under both columns on desktop,
+           last stacked card on mobile. -->
+      <div class="pt-sett-danger card" style="padding:24px;border:1px solid #FECACA">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="color:#DC2626">${ic('user-x','icon-sm')}</div>
+          <div style="font-size:1.05rem;font-weight:700;color:#1C1C1C">Delete My Account</div>
+        </div>
+        ${user.deletionRequestedAt ? `
+        <div style="font-size:.82rem;color:#6B7280;line-height:1.6;margin-bottom:14px">
+          You requested account deletion on <strong>${new Date(user.deletionRequestedAt.replace(' ','T')).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}</strong>.
+          Clinic staff will review it${user.deletionRequestReason ? `, reason given: "${user.deletionRequestReason}"` : ''}.
+          You can cancel this request any time before it's acted on.
+        </div>
+        <button class="btn-secondary" id="pt-cancel-del-btn" onclick="window.cancelDeletionRequest(this)">
+          ${ic('x','icon-sm')} Cancel Request
+        </button>` : `
+        <div style="font-size:.82rem;color:#6B7280;line-height:1.6;margin-bottom:14px">
+          Requesting deletion does not remove anything immediately, it notifies clinic staff, who will review it.
+          Your account and records stay exactly as they are until staff acts on the request, and you can cancel it any time before then.
+        </div>
+        <button class="btn-secondary" style="color:#DC2626;border-color:#FECACA" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background=''" onclick="window.openRequestDeletionModal()">
+          ${ic('user-x','icon-sm')} Request Account Deletion
+        </button>`}
       </div>
 
     </div>
@@ -6462,21 +6600,6 @@ function pagePatientDoctorAvail() {
     const blockedByDate = {}
     ;(doctor.blockedDates || []).forEach(b => { blockedByDate[b.date] = b.reason || 'Unavailable' })
 
-    // How many of the patient's own appointments already fall on each date —
-    // mirrors create.php's own max-appointments-per-patient-per-day cap and
-    // the same check the booking wizard's own calendar makes (amcRender(),
-    // main.js). Without this, "Book This Date" here pre-fills the date and
-    // skips straight past the wizard's Date step entirely (see
-    // patCalBookAppt()), so that calendar's own block never even ran — a
-    // patient already at their daily limit could still get all the way to
-    // the wizard's Review step from here before the server finally rejected it.
-    const maxPerPatientDay = window.consultationSettings?.maxApptsPerPatientPerDay || 1
-    const myApptCountByDate = {}
-    appointments.forEach(a => {
-      if (a.status === 'cancelled' || a.status === 'disapproved') return
-      myApptCountByDate[a.date] = (myApptCountByDate[a.date] || 0) + 1
-    })
-
     let cells = ''
     for (let i = 0; i < firstDay; i++) cells += `<div class="cal-day other-month"></div>`
     for (let d = 1; d <= daysInMon; d++) {
@@ -6495,12 +6618,10 @@ function pagePatientDoctorAvail() {
       const isBlocked   = !!blockedReason
       const daysOut     = Math.round((new Date(viewYear, viewMonth, d) - new Date(baseYear, baseMonth, todayDate)) / 86400000)
       const tooSoon     = daysOut >= 0 && daysOut < minAdvanceDays()
-      const isAlreadyBooked = (myApptCountByDate[dateStr] || 0) >= maxPerPatientDay
 
       let cls = 'cal-day'
       if (isSel)                          cls += ' cal-selected'
       else if (isToday)                   cls += ' today'
-      else if (isAlreadyBooked && !isPast) cls += ' blocked'
       else if (isBlocked && !isPast)      cls += ' date-blocked'
       else if (isHoliday && !isPast)      cls += ' cal-holiday'
       else if (isHoliday && isPast)       cls += ' blocked'
@@ -6522,25 +6643,22 @@ function pagePatientDoctorAvail() {
       // remain clickable — the click surfaces a toast (synced to the live
       // minAdvanceTooltip()) so patients on touch devices, who never see the
       // hover title="" tooltip, still get told why the date isn't bookable.
-      const tooSoonOnly = tooSoon && !isToday && !isPast && !isFar && !isHoliday && !isBlocked && !isAlreadyBooked
+      const tooSoonOnly = tooSoon && !isToday && !isPast && !isFar && !isHoliday && !isBlocked
       const dimStyle  = isPast ? 'pointer-events:none;'
-                       : (isAlreadyBooked || (tooSoon && !isToday)) ? 'cursor:not-allowed;' : ''
+                       : (tooSoon && !isToday) ? 'cursor:not-allowed;' : ''
       const styleAttr = dimStyle ? ` style="${dimStyle}"` : ''
-      const titleAttr = isAlreadyBooked ? `title="You already have ${maxPerPatientDay === 1 ? 'an appointment' : maxPerPatientDay + ' appointments'} scheduled this day."` :
-                        tooSoon   ? `title="${minAdvanceTooltip()}"` :
+      const titleAttr = tooSoon   ? `title="${minAdvanceTooltip()}"` :
                         isBlocked ? `title="Doctor unavailable: ${String(blockedReason).replace(/"/g,'&quot;')}"` :
                         isHoliday ? `title="Clinic closed: ${holidayName}"` :
                         isFar     ? `title="Beyond the maximum booking window."` : ''
       const hoverEvt  = !tooSoon && !isPast && !isFar && !isHoliday && dayAppts.length
         ? `onmouseenter="window.showCalTip(this,'${JSON.stringify(dayAppts).replace(/'/g,'&#39;').replace(/"/g,'&quot;')}')" onmouseleave="window.hideCalTip()"`
         : ''
-      const clickEvt  = isAlreadyBooked
-        ? ''
-        : avail && !isBlocked && !tooSoon && !isPast && !isFar && !isHoliday
-          ? `onclick="window.patCalSelectDate('${doctor.id}','${dateStr}')"`
-          : tooSoonOnly
-            ? `onclick="window.toast(window.minAdvanceTooltip(), 'error')"`
-            : ''
+      const clickEvt  = avail && !isBlocked && !tooSoon && !isPast && !isFar && !isHoliday
+        ? `onclick="window.patCalSelectDate('${doctor.id}','${dateStr}')"`
+        : tooSoonOnly
+          ? `onclick="window.toast(window.minAdvanceTooltip(), 'error')"`
+          : ''
 
       // Same inline-label convention as the booking wizard's own calendar
       // (amcRender(), main.js) — a hover title="" alone never reaches a
@@ -6548,13 +6666,11 @@ function pagePatientDoctorAvail() {
       // short label under the day number, not just a tooltip.
       const inner = isHoliday && !isPast
         ? `${d}<span class="cal-holiday-lbl">${holidayName}</span>`
-        : (isAlreadyBooked && !isPast)
-          ? `${d}<span class="cal-nodoc-lbl">Booked</span>`
-          : (tooSoon && !isPast)
-            ? `${d}<span class="cal-nodoc-lbl">Too Soon</span>`
-            : (isFar && !isPast)
-              ? `${d}<span class="cal-nodoc-lbl">Too Far</span>`
-              : String(d)
+        : (tooSoon && !isPast)
+          ? `${d}<span class="cal-nodoc-lbl">Too Soon</span>`
+          : (isFar && !isPast)
+            ? `${d}<span class="cal-nodoc-lbl">Too Far</span>`
+            : String(d)
       cells += `<div class="${cls}${dotCls}"${styleAttr} ${hoverEvt} ${clickEvt} ${titleAttr}>${inner}</div>`
     }
     return cells

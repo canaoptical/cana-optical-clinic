@@ -47,6 +47,37 @@ window.pwPolicyValid     = pwPolicyValid
 window.pwChecklistHtml   = pwChecklistHtml
 window.updatePwChecklist = updatePwChecklist
 
+// ── Contact number / address validity (shared by every screen that
+//    collects a person's contact number or address) ────────────────
+// Every contact-number input already strips non-digits as the user types
+// (oninput="this.value=this.value.replace(/\D/g,'')"), so by the time this
+// runs the value is digit-only — this just checks it's the right LENGTH
+// for a PH mobile number (e.g. 09171234567).
+function isValidContact(contact) {
+  return /^\d{11}$/.test((contact || '').trim())
+}
+window.isValidContact = isValidContact
+
+// No geocoding involved (that's the only way to truly verify an address
+// exists — see e.g. Google's Address Validation API — not something this
+// app has a key for) — just the same lightweight fallback most address-
+// validation guides recommend absent that: an allowed-character set plus
+// a minimum length, tuned loose enough that a genuinely short-but-real
+// address (e.g. "Purok 3, Sto. Tomas") never gets rejected.
+function looksLikeAddress(addr) {
+  const a = (addr || '').trim()
+  if (a.length < 8) return false          // too short to be a real address
+  if (!/[a-zA-Z]/.test(a)) return false   // a real address always has some plain letters (street/barangay/city)
+  if (/^(.)\1+$/.test(a.replace(/\s+/g, ''))) return false // the whole thing is one character repeated
+  // Letters (incl. accented, e.g. "Biñan"), digits, and the punctuation
+  // that actually shows up in a real PH address (. , ' # - / &) — reject
+  // anything built from characters an address would never contain
+  // (emoji, most symbols, keyboard-mash) instead of just checking non-empty.
+  if (!/^[\p{L}\p{N}\s.,#'\-/&]+$/u.test(a)) return false
+  return true
+}
+window.looksLikeAddress = looksLikeAddress
+
 // Shared by the "Change Password" section on every role's own Settings
 // page (ids are always {prefix}-curpw/-newpw/-confpw/-pw-err/-pw-btn).
 // Keeps Update Password disabled until the form is actually submittable —
@@ -232,6 +263,10 @@ async function handleRegister() {
   }
   if (!document.getElementById('reg-privacy-agree')?.checked) {
     errMsg.textContent = 'Please read and agree to the Data Privacy Act Notice before registering.'
+    errEl.style.display = 'flex'; return
+  }
+  if (!document.getElementById('reg-age-confirm')?.checked) {
+    errMsg.textContent = 'Please confirm your date of birth is accurate and that you are at least 13 years old.'
     errEl.style.display = 'flex'; return
   }
   if (pass !== confirm) {
@@ -582,10 +617,10 @@ async function regNextStep() {
     }
     const dobDate = new Date(dob + 'T00:00:00')
     const today   = new Date()
-    const minDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+    const minDate = new Date(today.getFullYear() - 13, today.getMonth(), today.getDate())
     if (dobDate > minDate) {
       markError('reg-dob-trigger')
-      if (errMsg) errMsg.textContent = 'You must be at least 18 years old to create an account. Patients under 18 may be registered by a parent or guardian at the clinic.'
+      if (errMsg) errMsg.textContent = 'You must be at least 13 years old to create an account. Younger patients may be registered by clinic staff instead.'
       if (errEl)  errEl.style.display = 'flex'; return
     }
   } else if (step === 2) {
@@ -597,6 +632,16 @@ async function regNextStep() {
     if (!address) markError('reg-address')
     if (!contact || !address) {
       if (errMsg) errMsg.textContent = 'Please fill in all required fields.'
+      if (errEl)  errEl.style.display = 'flex'; return
+    }
+    if (!isValidContact(contact)) {
+      markError('reg-contact')
+      if (errMsg) errMsg.textContent = 'Please enter a valid 11-digit contact number (e.g. 09171234567).'
+      if (errEl)  errEl.style.display = 'flex'; return
+    }
+    if (!looksLikeAddress(address)) {
+      markError('reg-address')
+      if (errMsg) errMsg.textContent = 'Please enter your complete address.'
       if (errEl)  errEl.style.display = 'flex'; return
     }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -770,15 +815,15 @@ function showRegister() {
   ;['reg-first','reg-last','reg-address','reg-contact','reg-email','reg-password','reg-confirm']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = '' })
   // reg-dob is the custom picker (see main.js) — reset its display, not just
-  // the underlying hidden input, and recompute the 18+ cutoff each time the
+  // the underlying hidden input, and recompute the 13+ cutoff each time the
   // form opens rather than once at page load.
   if (window.resetDobField) window.resetDobField('reg-dob')
-  // window.maxDobFor18() (main.js) already computes this exact cutoff via
+  // window.maxDobFor13() (main.js) already computes this exact cutoff via
   // localDateStr() — not .toISOString(), which converts to UTC first and
   // lands on the wrong calendar day in a UTC+8 timezone during early
   // morning hours. Reuse it instead of recomputing (and re-risking) the
   // same date here.
-  if (window.setDobFieldMax) window.setDobFieldMax('reg-dob', window.maxDobFor18 ? window.maxDobFor18() : localDateStr(new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate())))
+  if (window.setDobFieldMax) window.setDobFieldMax('reg-dob', window.maxDobFor13 ? window.maxDobFor13() : localDateStr(new Date(new Date().getFullYear() - 13, new Date().getMonth(), new Date().getDate())))
   // reg-gender is also the custom select (see main.js) now — a direct
   // .value = '' reset would clear the hidden input but leave the visible
   // trigger button still showing whatever was last picked.
@@ -788,6 +833,8 @@ function showRegister() {
   if (termsCb) { termsCb.checked = false; termsCb.disabled = true }
   const privacyCb = document.getElementById('reg-privacy-agree')
   if (privacyCb) { privacyCb.checked = false; privacyCb.disabled = true }
+  const ageCb = document.getElementById('reg-age-confirm')
+  if (ageCb) ageCb.checked = false
   _regUpdateConsentHint()
   window._regStep = 0
   _regGoToStep(1)
@@ -1903,10 +1950,17 @@ async function _syncMyRecords() {
     const cons  = d.consultations || []
     const delAt  = d.deletionRequestedAt   || null
     const delRsn = d.deletionRequestReason || ''
+    const noShowCount = d.noShowCount || 0
+    const bookingRestricted = !!d.bookingRestricted
+    // Captured before state.user is overwritten below — used for a
+    // narrower, separate re-render trigger further down.
+    const restrictionChanged = window.state.user?.bookingRestricted !== bookingRestricted
     const changed = _pollDataChanged(
       { examinations: window.state.user?.examinations, prescriptions: window.state.user?.prescriptions, consultations: window.state.user?.consultations,
-        deletionRequestedAt: window.state.user?.deletionRequestedAt, deletionRequestReason: window.state.user?.deletionRequestReason },
-      { examinations: exams, prescriptions: rxs, consultations: cons, deletionRequestedAt: delAt, deletionRequestReason: delRsn }
+        deletionRequestedAt: window.state.user?.deletionRequestedAt, deletionRequestReason: window.state.user?.deletionRequestReason,
+        noShowCount: window.state.user?.noShowCount, bookingRestricted: window.state.user?.bookingRestricted },
+      { examinations: exams, prescriptions: rxs, consultations: cons, deletionRequestedAt: delAt, deletionRequestReason: delRsn,
+        noShowCount, bookingRestricted }
     )
     // Update state.user so the exam-history/prescriptions/consultations pages (which read user.examinations etc. directly) work
     if (window.state.user) {
@@ -1920,6 +1974,13 @@ async function _syncMyRecords() {
       // Account Deletion" once this clears.
       window.state.user.deletionRequestedAt   = delAt
       window.state.user.deletionRequestReason = delRsn
+      // Picks up admin clearing an online-booking restriction (or, in the
+      // other direction, a new no-show pushing them past the threshold) —
+      // see the patient-request-appt re-render below, which swaps the
+      // "Online Booking Unavailable" screen for the real booking wizard
+      // (or back) the moment this changes, no refresh needed.
+      window.state.user.noShowCount       = noShowCount
+      window.state.user.bookingRestricted = bookingRestricted
     }
     // Insert/update patient in patients[] so dashboard, exam-history, prescriptions pages work
     const uid = window.state.user?.id
@@ -1929,13 +1990,23 @@ async function _syncMyRecords() {
         patients[idx].examinations  = exams
         patients[idx].prescriptions = rxs
         patients[idx].consultations = cons
+        patients[idx].noShowCount       = noShowCount
+        patients[idx].bookingRestricted = bookingRestricted
       } else {
-        patients.push({ ...window.state.user, examinations: exams, prescriptions: rxs, consultations: cons })
+        patients.push({ ...window.state.user, examinations: exams, prescriptions: rxs, consultations: cons, noShowCount, bookingRestricted })
       }
     }
     const page = window.state?.page
     const dataPages = new Set(['patient-dashboard','patient-prescriptions','patient-exam-history','patient-consultations','patient-settings'])
     if (changed && dataPages.has(page)) window.renderPage({ silent: true })
+    // Deliberately separate from the block above and gated on
+    // restrictionChanged alone (not the broader `changed`) — Request
+    // Appointment hosts the interactive booking wizard (doctor/date/time
+    // already picked, notes typed in), and re-rendering it on every
+    // unrelated data change (a new exam landing, etc.) would silently wipe
+    // that out mid-booking. Only flip the "Online Booking Unavailable"
+    // screen in or out when the restriction itself actually changes.
+    if (restrictionChanged && page === 'patient-request-appt') window.renderPage({ silent: true })
   } catch (_) {}
 }
 window._syncMyRecords = _syncMyRecords
@@ -2061,7 +2132,6 @@ async function _syncClinicSettings() {
     Object.assign(consultationSettings, {
       defaultDuration: s.defaultDuration, maxAdvanceBooking: s.maxAdvanceBooking,
       minAdvanceBooking: s.minAdvanceBooking, maxApptsPerDoctorPerDay: s.maxApptsPerDoctorPerDay,
-      maxApptsPerPatientPerDay: s.maxApptsPerPatientPerDay,
       morningStart: s.morningStart, morningEnd: s.morningEnd,
       afternoonStart: s.afternoonStart, afternoonEnd: s.afternoonEnd,
       lunchBreak: s.lunchBreak, clinicDays: s.clinicDays,

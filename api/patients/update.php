@@ -3,7 +3,7 @@
 //  CANAOPTICALCLINIC — api/patients/update.php
 //
 //  POST { action:'profile', firstName, middleName, lastName, phone,
-//         address, occupation, gender?, dob? }
+//         address, occupation, medicalHistory, gender?, dob? }
 //
 //  Only authenticated patients may call this endpoint.
 //  (Password changes for patients go through api/users/change_password.php,
@@ -49,6 +49,7 @@ try {
         $phone      = trim($b['phone']      ?? '');
         $address    = trim($b['address']    ?? '');
         $occupation = trim($b['occupation'] ?? '');
+        $medHx      = trim($b['medicalHistory'] ?? '');
         $gender     = trim($b['gender']     ?? '');
         $dob        = trim($b['dob']        ?? '');
 
@@ -58,9 +59,15 @@ try {
         if ($gender && !in_array($gender, ['Male', 'Female', 'Other'], true)) {
             jsonResponse(['success' => false, 'message' => 'Invalid gender value.']);
         }
+        if ($phone && !isValidContact($phone)) {
+            jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+        }
+        if ($address && !looksLikeAddress($address)) {
+            jsonResponse(['success' => false, 'message' => 'Please enter a complete address.']);
+        }
 
-        $sets   = ['first_name = ?', 'middle_name = ?', 'last_name = ?', 'contact = ?', 'address = ?', 'occupation = ?'];
-        $values = [$fn, $mn ?: null, $ln, $phone, $address, $occupation];
+        $sets   = ['first_name = ?', 'middle_name = ?', 'last_name = ?', 'contact = ?', 'address = ?', 'occupation = ?', 'medical_history = ?'];
+        $values = [$fn, $mn ?: null, $ln, $phone, $address, $occupation, $medHx ?: null];
 
         if ($gender) { $sets[] = 'gender = ?'; $values[] = $gender; }
         if ($dob) {

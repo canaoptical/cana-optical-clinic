@@ -3,7 +3,7 @@
 //  CANAOPTICALCLINIC — api/patients/create.php
 //  Admin/Staff only. Registers a new patient from the dashboard.
 //  POST { firstName, middleName?, lastName, gender, dob, contact, email?,
-//         address?, occupation? }
+//         address?, occupation?, medicalHistory? }
 //  → { success:true, patient, tempPassword? }
 // ================================================================
 
@@ -31,9 +31,16 @@ $contact= trim($b['contact']        ?? '');
 $email  = trim($b['email']          ?? '');
 $addr   = trim($b['address']        ?? '');
 $occ    = trim($b['occupation']     ?? '');
+$medHx  = trim($b['medicalHistory'] ?? '');
 
 if (!$first || !$last || !$gender || !$dob) {
     jsonResponse(['success' => false, 'message' => 'First name, last name, gender and date of birth are required.']);
+}
+if ($contact && !isValidContact($contact)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
+if ($addr && !looksLikeAddress($addr)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a complete address.']);
 }
 
 try {
@@ -89,12 +96,12 @@ try {
     $pdo->prepare(
         'INSERT INTO patients
          (id, user_id, first_name, middle_name, last_name, gender, dob, age,
-          contact, address, occupation,
+          contact, address, occupation, medical_history,
           qr_data, registered_date, status)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )->execute([
         $pid, $uid, $first, $middle ?: null, $last, $gender, $dob, $age,
-        $contact, $addr, $occ,
+        $contact, $addr, $occ, $medHx ?: null,
         $qrData, $today, 'active',
     ]);
 
@@ -142,6 +149,7 @@ try {
         'email'          => $email,
         'address'        => $addr,
         'occupation'     => $occ,
+        'medicalHistory' => $medHx,
         'qrData'         => $qrData,
         'registeredDate' => $today,
         'lastVisit'      => '—',

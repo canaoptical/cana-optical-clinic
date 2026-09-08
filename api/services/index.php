@@ -23,13 +23,14 @@ try {
 
     $services = array_map(function (array $r): array {
         return [
-            'id'          => (int)$r['id'],
-            'name'        => $r['name'],
-            'description' => $r['description'],
-            'duration'    => (int)$r['duration'],
-            'status'      => $r['status'],
-            'icon'        => $r['icon'],
-            'sortOrder'   => (int)$r['sort_order'],
+            'id'             => (int)$r['id'],
+            'name'           => $r['name'],
+            'description'    => $r['description'],
+            'status'         => $r['status'],
+            'icon'           => $r['icon'],
+            'sortOrder'      => (int)$r['sort_order'],
+            'bookable'       => (bool)$r['bookable'],
+            'patientVisible' => (bool)$r['patient_visible'],
         ];
     }, $rows);
 

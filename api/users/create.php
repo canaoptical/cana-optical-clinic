@@ -43,6 +43,9 @@ if (!$dbRole) {
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     jsonResponse(['success' => false, 'message' => 'Please enter a valid email address.']);
 }
+if ($contact && !isValidContact($contact)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
 
 if ($pwError = validatePasswordPolicy($pass)) {
     jsonResponse(['success' => false, 'message' => $pwError]);

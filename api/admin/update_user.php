@@ -40,6 +40,9 @@ $sortOrder       = isset($b['sortOrder']) ? max(0, (int)$b['sortOrder']) : null;
 if (!$profileId || !$role || !$fn || !$ln) {
     jsonResponse(['success' => false, 'message' => 'profileId, role, firstName and lastName are required.']);
 }
+if ($contact && !isValidContact($contact)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
 
 $tableMap = [
     'Admin'   => 'admins',

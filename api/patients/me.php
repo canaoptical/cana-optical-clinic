@@ -26,11 +26,13 @@ if ($role !== 'patient' || !$profileId) {
 try {
     $pdo = getDB();
 
-    // Own account-deletion-request status — lets the 30s poll (_syncMyRecords(),
-    // auth.js) notice when admin/staff has archived or dismissed a request
-    // and update the Settings > My Profile card without the patient having
-    // to reload the page themselves.
-    $ds = $pdo->prepare('SELECT deletion_requested_at, deletion_request_reason FROM patients WHERE id = ? LIMIT 1');
+    // Own account-deletion-request status, no-show count, and booking
+    // restriction — lets the 30s poll (_syncMyRecords(), auth.js) notice
+    // when admin/staff has archived/dismissed a deletion request or
+    // cleared an online-booking restriction, and update the relevant page
+    // (Settings > My Profile, Request Appointment) without the patient
+    // having to reload the page themselves.
+    $ds = $pdo->prepare('SELECT deletion_requested_at, deletion_request_reason, no_show_count, booking_restricted FROM patients WHERE id = ? LIMIT 1');
     $ds->execute([$profileId]);
     $delRow = $ds->fetch();
 
@@ -123,6 +125,7 @@ try {
         'assessment'             => $c['assessment'] ?? '',
         'recommendation'         => $c['recommendation'] ?? '',
         'followUpDate'           => $c['follow_up_date'] ?? '',
+        'followUpTime'           => $c['follow_up_time'] ?? '',
         'status'                 => $c['status'] ?? 'completed',
     ], $conRows);
 
@@ -133,6 +136,8 @@ try {
         'consultations'          => $consultations,
         'deletionRequestedAt'    => $delRow['deletion_requested_at']   ?? null,
         'deletionRequestReason'  => $delRow['deletion_request_reason'] ?? '',
+        'noShowCount'            => (int)($delRow['no_show_count'] ?? 0),
+        'bookingRestricted'      => (bool)($delRow['booking_restricted'] ?? false),
     ]);
 
 } catch (PDOException $e) {

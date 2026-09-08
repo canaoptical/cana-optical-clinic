@@ -1,8 +1,10 @@
 <?php
 // ================================================================
 //  CANAOPTICALCLINIC — api/services/update.php
-//  POST { id, name, description, duration, status, icon } — admin only.
-//  Only the fields present in the request body are updated.
+//  POST { id, name, description, status, icon, bookable, patientVisible } — admin only.
+//  Only the fields present in the request body are updated. No per-service
+//  duration — every appointment runs on the one clinic-wide interval
+//  (clinic_settings.default_duration).
 // ================================================================
 
 require_once '../../config/db.php';
@@ -24,18 +26,24 @@ if (!$id) {
     jsonResponse(['success' => false, 'message' => 'id is required.']);
 }
 
-$cols = ['name', 'description', 'duration', 'status', 'icon'];
+$cols = ['name', 'description', 'status', 'icon', 'bookable', 'patientVisible'];
 $sets   = [];
 $values = [];
 
 foreach ($cols as $c) {
     if (!array_key_exists($c, $b)) continue;
-    if ($c === 'duration') {
-        $sets[]   = '`duration` = ?';
-        $values[] = max(5, min(240, (int)$b['duration']));
-    } elseif ($c === 'status') {
+    if ($c === 'status') {
         $sets[]   = '`status` = ?';
         $values[] = in_array($b['status'], ['active', 'inactive'], true) ? $b['status'] : 'active';
+    } elseif ($c === 'bookable') {
+        $sets[]   = '`bookable` = ?';
+        $values[] = (int)!!$b['bookable'];
+    } elseif ($c === 'patientVisible') {
+        // camelCase in the request body (JS convention) maps to the
+        // snake_case `patient_visible` column — everything else here
+        // happens to share its column name verbatim.
+        $sets[]   = '`patient_visible` = ?';
+        $values[] = (int)!!$b['patientVisible'];
     } else {
         $sets[]   = "`$c` = ?";
         $values[] = trim((string)$b[$c]);
@@ -61,7 +69,8 @@ try {
 
     jsonResponse(['success' => true, 'service' => [
         'id' => (int)$r['id'], 'name' => $r['name'], 'description' => $r['description'],
-        'duration' => (int)$r['duration'], 'status' => $r['status'], 'icon' => $r['icon'],
+        'status' => $r['status'], 'icon' => $r['icon'],
+        'bookable' => (bool)$r['bookable'], 'patientVisible' => (bool)$r['patient_visible'],
     ]]);
 
 } catch (PDOException $e) {

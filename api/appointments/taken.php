@@ -2,17 +2,18 @@
 // ================================================================
 //  CANAOPTICALCLINIC — api/appointments/taken.php
 //  GET ?doctorId=D001&date=2026-07-15
-//  → { success:true, taken:[{time:"9:00 AM",duration:30},…], defaultDuration:30 }
+//  → { success:true, taken:[{time:"9:00 AM",duration:45},…], defaultDuration:45 }
 //
 //  GET ?doctorIds=D001,D002,D003&date=2026-07-15   (batch/"any doctor" mode)
-//  → { success:true, byDoctor:{ D001:[{time,duration},…], D002:[…] }, defaultDuration:30 }
+//  → { success:true, byDoctor:{ D001:[{time,duration},…], D002:[…] }, defaultDuration:45 }
 //
 //  Returns the booked (non-cancelled/disapproved) appointment times
-//  for a given doctor on a given date, with each appointment's own
-//  service duration (from clinic_services) so the frontend can
-//  compute per-slot gap zones correctly. The batch form powers the
-//  "any available optometrist" booking path, which needs the same
-//  data for several doctors at once to compute union availability.
+//  for a given doctor on a given date, each carrying the clinic-wide
+//  slot duration (clinic_settings.default_duration — services no longer
+//  have their own duration, every appointment runs on the one interval)
+//  so the frontend can compute per-slot gap zones correctly. The batch
+//  form powers the "any available optometrist" booking path, which needs
+//  the same data for several doctors at once to compute union availability.
 // ================================================================
 
 require_once '../../config/db.php';
@@ -40,8 +41,8 @@ try {
     $durStr = $pdo->query(
         'SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1'
     )->fetchColumn();
-    preg_match('/(\d+)/', $durStr ?: '30', $dm);
-    $defaultDuration = isset($dm[1]) ? (int)$dm[1] : 30;
+    preg_match('/(\d+)/', $durStr ?: '45', $dm);
+    $defaultDuration = isset($dm[1]) ? (int)$dm[1] : 45;
 
     // ── Batch mode: several doctors at once, grouped per doctor ──
     if ($doctorIds) {
@@ -60,9 +61,8 @@ try {
     jsonResponse(['success' => false, 'message' => 'Database error.'], 500);
 }
 
-// JOIN clinic_services so each booked slot carries its own duration.
-// COALESCE falls back to the clinic-wide default if the service name
-// doesn't match (renamed service, legacy data, etc.).
+// Every booked slot uses the same clinic-wide $defaultDuration now — no
+// per-service duration to look up, so no clinic_services JOIN needed.
 // excludeId lets the reschedule picker omit the appointment being moved
 // so its own current slot does not show as taken.
 function _takenTimesForDoctor(PDO $pdo, string $doctorId, string $date, int $defaultDuration, string $excludeId): array {
@@ -71,21 +71,20 @@ function _takenTimesForDoctor(PDO $pdo, string $doctorId, string $date, int $def
     // own other appointment" (see wizBuildTimeSlots() in main.js) — offering
     // a waitlist join for a slot the patient already holds themselves
     // doesn't make sense.
-    $sql = "SELECT a.time, a.patient_id, COALESCE(cs.duration, :def) AS duration
+    $sql = "SELECT a.time, a.patient_id
             FROM appointments a
-            LEFT JOIN clinic_services cs ON cs.name = a.type
             WHERE a.doctor_id = :doc AND a.date = :date
               AND a.status NOT IN ('cancelled','disapproved')"
          . ($excludeId ? ' AND a.id != :excl' : '');
     $stmt = $pdo->prepare($sql);
-    $params = [':def' => $defaultDuration, ':doc' => $doctorId, ':date' => $date];
+    $params = [':doc' => $doctorId, ':date' => $date];
     if ($excludeId) $params[':excl'] = $excludeId;
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $taken = array_map(fn($r) => [
         'time'      => $r['time'],
-        'duration'  => (int)$r['duration'],
+        'duration'  => $defaultDuration,
         'patientId' => $r['patient_id'],
     ], $rows);
 

@@ -7,7 +7,7 @@
 //  and intentionally excludes gender/dob for record-accuracy reasons).
 //
 //  POST { id, firstName, middleName?, lastName, gender?, dob?, contact?,
-//         email?, address?, occupation? }
+//         email?, address?, occupation?, medicalHistory? }
 // ================================================================
 
 require_once '../../config/db.php';
@@ -42,6 +42,7 @@ $contact = trim($b['contact'] ?? '');
 $email   = trim($b['email']   ?? '');
 $address = trim($b['address'] ?? '');
 $occupation = isset($b['occupation']) ? trim($b['occupation']) : null;
+$medHx      = isset($b['medicalHistory']) ? trim($b['medicalHistory']) : null;
 $status  = isset($b['status']) ? trim($b['status']) : null;
 
 if ($gender && !in_array($gender, ['Male', 'Female', 'Other'], true)) {
@@ -49,6 +50,12 @@ if ($gender && !in_array($gender, ['Male', 'Female', 'Other'], true)) {
 }
 if ($status && !in_array($status, ['active', 'inactive'], true)) {
     jsonResponse(['success' => false, 'message' => 'Invalid status value.']);
+}
+if ($contact && !isValidContact($contact)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
+if ($address && !looksLikeAddress($address)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a complete address.']);
 }
 
 try {
@@ -76,6 +83,7 @@ try {
     if ($contact !== '') { $sets[] = 'contact = ?'; $values[] = $contact; }
     if ($address !== '') { $sets[] = 'address = ?'; $values[] = $address; }
     if ($occupation !== null) { $sets[] = 'occupation = ?'; $values[] = $occupation; }
+    if ($medHx !== null) { $sets[] = 'medical_history = ?'; $values[] = $medHx ?: null; }
     if ($status)           { $sets[] = 'status = ?'; $values[] = $status; }
 
     $values[] = $id;

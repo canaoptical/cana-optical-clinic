@@ -134,6 +134,34 @@ function validatePasswordPolicy(string $password): ?string {
     return null;
 }
 
+// ── Contact number / address validity ──────────────────────────────
+// Mirrors isValidContact()/looksLikeAddress() in auth.js so a direct API
+// call can't bypass what the UI already enforces. Callers only invoke
+// these when a value was actually submitted — contact/address stay
+// optional wherever they already were; this only rejects a BAD value,
+// never a missing one.
+function isValidContact(string $contact): bool {
+    return (bool)preg_match('/^\d{11}$/', trim($contact));
+}
+
+// No geocoding involved (that's the only way to truly verify an address
+// exists, e.g. Google's Address Validation API — not something this app
+// has a key for) — just the same lightweight fallback most address-
+// validation guides recommend absent that: an allowed-character set plus
+// a minimum length, tuned loose enough that a genuinely short-but-real
+// address (e.g. "Purok 3, Sto. Tomas") never gets rejected.
+function looksLikeAddress(string $addr): bool {
+    $a = trim($addr);
+    if (mb_strlen($a) < 8) return false;
+    if (!preg_match('/[a-zA-Z]/', $a)) return false;
+    if (preg_match('/^(.)\1+$/', preg_replace('/\s+/', '', $a))) return false;
+    // Letters (incl. accented, e.g. "Biñan"), digits, and the punctuation
+    // that actually shows up in a real PH address (. , ' # - / &) — reject
+    // anything built from characters an address would never contain.
+    if (!preg_match('/^[\p{L}\p{N}\s.,#\'\-\/&]+$/u', $a)) return false;
+    return true;
+}
+
 // ── Password reuse prevention ──────────────────────────────────────
 // Standard practice (a new password must differ from recent past ones,
 // not just the current one) backed by the `password_history` table.
@@ -702,6 +730,7 @@ function buildUserObject(string $role, array $p, string $email, array $days = []
             'age'            => (int)($p['age']        ?? 0),
             'address'        => $p['address']          ?? '',
             'occupation'     => $p['occupation']       ?? '',
+            'medicalHistory' => $p['medical_history']  ?? '',
             'qrData'         => $p['qr_data']          ?? '',
             'registeredDate' => $p['registered_date']  ?? '',
             'lastVisit'      => $p['last_visit'] ?: '—',
@@ -810,8 +839,8 @@ function settingTimeTo24h(string $t): string {
 // of us having to convert to UTC ourselves.
 function googleCalendarUrl(PDO $pdo, string $date, string $time, ?string $doctorName, ?string $apptType): string {
     $durStr = $pdo->query('SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn();
-    preg_match('/(\d+)/', $durStr ?: '40', $dm);
-    $durationMin = isset($dm[1]) ? (int)$dm[1] : 40;
+    preg_match('/(\d+)/', $durStr ?: '45', $dm);
+    $durationMin = isset($dm[1]) ? (int)$dm[1] : 45;
 
     $startTs = strtotime("$date $time");
     if ($startTs === false) $startTs = strtotime($date) ?: time();
@@ -1084,7 +1113,7 @@ function notifyAdminStaff(PDO $pdo, string $type, string $title, string $body, ?
 // in-app Appointment Details modal already shows a Cancellation/
 // Disapproval Reason as its own highlighted block, not just appended
 // text.
-function _emailPatientNotice(PDO $pdo, int $userId, string $subject, string $message, string $ctaUrl = '', string $ctaLabel = '', string $ctaDate = '', string $reasonLabel = '', string $reasonText = ''): void {
+function _emailPatientNotice(PDO $pdo, int $userId, string $subject, string $message, string $ctaUrl = '', string $ctaLabel = '', string $ctaDate = '', string $reasonLabel = '', string $reasonText = '', string $reasonTone = 'negative'): void {
     try {
         $s = $pdo->prepare(
             'SELECT u.email, p.first_name, p.last_name
@@ -1098,7 +1127,7 @@ function _emailPatientNotice(PDO $pdo, int $userId, string $subject, string $mes
         $text = "$subject\n\n$message"
             . ($reasonText ? "\n\n" . ($reasonLabel ?: 'Reason') . ": $reasonText" : '')
             . ($ctaUrl ? "\n\n" . ($ctaLabel ?: 'View Details') . ": $ctaUrl" : '');
-        sendEmail($row['email'], $name, $subject, systemEmailBody($name, $subject, $message, $ctaUrl, $ctaLabel, $ctaDate, $reasonLabel, $reasonText), $text);
+        sendEmail($row['email'], $name, $subject, systemEmailBody($name, $subject, $message, $ctaUrl, $ctaLabel, $ctaDate, $reasonLabel, $reasonText, $reasonTone), $text);
     } catch (\Throwable $e) {
         error_log('[email] Notice "' . $subject . '" failed for user ' . $userId . ': ' . $e->getMessage());
     }

@@ -86,16 +86,21 @@ try {
         'INSERT INTO consultations
            (id, patient_id, doctor_id, date, type,
             chief_complaint, history_present_illness, assessment, recommendation,
-            follow_up_date, status)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+            follow_up_date, follow_up_time, status)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
     )->execute([
         $conId, $patientId, $doctorId ?: null, $date,
-        $b['appointmentType'] ?? 'Eye Examination',
+        $b['appointmentType'] ?? 'Comprehensive Eye Examination',
         $b['chiefComplaint']         ?? '',
         $b['historyPresentIllness']  ?? '',
         $b['assessment']             ?? '',
         $b['recommendation']         ?? '',
         !empty($b['followUpDate']) ? $b['followUpDate'] : null,
+        // Only meaningful alongside an actual follow-up date — an
+        // orphaned time with no date can't happen from the wizard's own
+        // picker (see openFollowUpPicker(), main.js), but guard here too
+        // in case of a direct API call.
+        (!empty($b['followUpDate']) && !empty($b['followUpTime'])) ? $b['followUpTime'] : null,
         $b['consultationStatus'] ?? 'completed',
     ]);
 
@@ -216,8 +221,9 @@ try {
     // on the consultation record until someone happens to notice it.
     if (!empty($b['followUpDate'])) {
         $fmtFollowUp = date('M j, Y', strtotime($b['followUpDate']));
+        $fmtFollowUpTime = !empty($b['followUpTime']) ? " at {$b['followUpTime']}" : '';
         notifyAdminStaff($pdo, 'follow_up_needed', 'Follow-up Consultation Needed',
-            "{$doctorName} recommends a follow-up for {$ptName} on {$fmtFollowUp}. Please schedule the appointment.",
+            "{$doctorName} recommends a follow-up for {$ptName} on {$fmtFollowUp}{$fmtFollowUpTime}. Please schedule the appointment.",
             $patientId
         );
     }

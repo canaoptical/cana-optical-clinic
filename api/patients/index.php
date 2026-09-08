@@ -140,6 +140,7 @@ try {
             'assessment'             => $c['assessment'] ?? '',
             'recommendation'         => $c['recommendation'] ?? '',
             'followUpDate'           => $c['follow_up_date'] ?? '',
+            'followUpTime'           => $c['follow_up_time'] ?? '',
             'status'                 => $c['status'] ?? 'completed',
         ];
     }
@@ -160,6 +161,7 @@ try {
             'contact'        => $p['contact'] ?? '',
             'address'        => $p['address'] ?? '',
             'occupation'     => $p['occupation'] ?? '',
+            'medicalHistory' => $p['medical_history'] ?? '',
             'qrData'         => $p['qr_data'] ?? '',
             'registeredDate' => $p['registered_date'] ?? '',
             'lastVisit'      => $p['last_visit'] ?: '—',

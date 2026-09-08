@@ -1954,6 +1954,29 @@ input[type="date"].reg-input::-webkit-datetime-edit-year-field {
   box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
   overflow: hidden;
 }
+
+/* Record row (Patient Profile Consultations / Prescriptions / Examinations
+   tabs, and any similar date+meta list row): the info column wraps its own
+   text at narrow widths, so it needs a guaranteed minimum width instead of
+   shrinking to 0 — otherwise the trailing badge/buttons squeeze into the
+   text as it wraps. Once the row is too narrow to fit everything on one
+   line, the trailing group drops to its own line instead of overlapping. */
+.record-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  gap: 12px;
+  padding: 13px 20px;
+}
+.record-row-info { flex: 1 1 170px; min-width: 170px; }
+.record-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
 .table-toolbar {
   padding: 14px 20px;
   border-bottom: 1px solid #F3F4F6;
@@ -2133,8 +2156,10 @@ input[type="date"].reg-input::-webkit-datetime-edit-year-field {
    it again. Living in a stylesheet rule instead means that fallback is
    flex, not block, regardless of how many times a filter clears the
    inline override. */
-.hist-row { display: flex; align-items: center; gap: 12px; padding: 13px 20px; border-bottom: 1px solid #F3F4F6; }
+.hist-row { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; gap: 12px; padding: 13px 20px; border-bottom: 1px solid #F3F4F6; }
 .hist-row-featured { background: #FAFAF8; }
+.hist-row-info { flex: 1 1 170px; min-width: 170px; }
+.hist-row-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
 /* Real-time "no results" row a live text search inserts into a .tbl table
    (see main.js's _syncSearchEmptyState()) — .table-empty already gives it
    the exact same look every other "nothing here" message uses; this just
@@ -3931,8 +3956,12 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
      padding reads as flat/compressed since there's much more width for
      the same amount of breathing room top-to-bottom. More vertical
      padding and a bit more gap between avatar/name/spec gives it room to
-     match the wider footprint. */
-  .doctor-sel-card { width: auto; flex: unset; padding: 20px 12px; gap: 10px; }
+     match the wider footprint. A bigger avatar (44px was sized for the
+     desktop's narrow fixed-width card) fills more of that extra height
+     itself, rather than just padding trying to carry it alone. */
+  .doctor-sel-card { width: auto; flex: unset; padding: 26px 14px; gap: 12px; }
+  .doctor-sel-card .doc-card-avatar { width: 60px; height: 60px; font-size: 1.05rem; }
+  .doc-avail-badge { width: 20px; height: 20px; }
   /* Calendar panel: single column on mobile */
   .pat-doc-cal-body { grid-template-columns: 1fr; gap: 16px; }
   /* Doctor header: stack Book button below on mobile */
@@ -4085,8 +4114,13 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
   .search-input:focus { width: 100%; }
 
   /* ── Topbar: too many elements for a narrow viewport — drop the
-     decorative clinic block, let the breadcrumb truncate instead of
-     wrapping/overflowing ── */
+     decorative clinic block. The breadcrumb itself scrolls horizontally
+     instead of wrapping to a second line (same convention as .filter-tabs
+     above) — an ellipsis-on-the-last-segment approach used to sit here,
+     but a flex item's default min-width:auto stops it actually shrinking
+     enough to trigger, so on a long enough label the row wrapped anyway
+     instead of truncating. Scrolling sidesteps that: nothing needs to
+     shrink, it just scrolls to what doesn't fit. ── */
   .topbar { gap: 8px; }
   .topbar-left { min-width: 0; gap: 8px; }
   .topbar-clinic { display: none; }
@@ -4095,15 +4129,21 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
   .topbar-crumb {
     min-width: 0;
     flex: 1;
-    overflow: hidden;
-  }
-  .topbar-crumb strong {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #D1D5DB transparent;
     white-space: nowrap;
-    vertical-align: bottom;
+  }
+  .topbar-crumb::-webkit-scrollbar { height: 3px; display: block; }
+  .topbar-crumb::-webkit-scrollbar-track { background: transparent; }
+  .topbar-crumb::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 99px; }
+  .topbar-crumb-link,
+  .topbar-crumb strong {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   /* ── Card headers: title + select/button combo needs to wrap, not
@@ -4162,11 +4202,23 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
     justify-content: center;
   }
   /* A page-header with more than one button (e.g. Appointments' Waitlist +
-     New Appointment) would otherwise have both fighting over width:100%
-     inside the same flex row above — each gets shrunk to roughly half,
-     squeezed together instead of the same clean full-width look every
-     single-button page-header already has. Stack them instead. */
-  .page-header-btn-group { flex-direction: column; }
+     New Appointment, Dashboard's Print/Download/Waitlist/New Appointment)
+     would otherwise have all of them fighting over width:100% inside the
+     same flex row above — each gets shrunk to a sliver, squeezed together
+     instead of the same clean full-width look every single-button
+     page-header already has. A 2-up grid instead of stacking one per row —
+     full-width stacking a 4-button header (Dashboard) burned real vertical
+     space before any actual page content showed; each button still gets a
+     comfortably tappable full-width-of-its-column target, just two per row
+     instead of one. An odd button count's last item naturally spans just
+     its own column, not the full row — acceptable rather than worth
+     special-casing. Every call site sets style="display:flex;gap:10px"
+     inline for its own desktop layout — an inline style always wins over
+     an external stylesheet rule regardless of specificity, media query,
+     or source order, so display:grid here needs !important to actually
+     take over on mobile at all (same reason .pt-sett-col's own desktop
+     grid override needs it, pages.js). */
+  .page-header-btn-group { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px !important; }
   /* .page-header-right (e.g. Dashboard's Waitlist/New Appointment cluster
      with the date caption underneath) is a nested wrapper, one level
      deeper than .page-header-btn-group itself — its own align-items:flex-end
@@ -4192,6 +4244,29 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
   #ep-temp-row { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
   #ep-temp-wrap { align-items: flex-start !important; }
 }
+
+/* ══════════════════════════════════════════════
+   SCREEN — Ophthalmic Clearance's two editable paragraphs
+   (clearance-remarks-1/-2, main.js). These used to only reveal
+   themselves as editable once actually focused (a dashed outline that
+   appeared, then vanished on blur) — nothing distinguished them from
+   the surrounding plain certificate text beforehand, so there was no way
+   to tell they were editable without clicking into one first. A
+   persistent tint + dashed border makes that obvious up front instead.
+   Screen-only on purpose: @media print below already strips this class
+   back to plain text for real printing, and downloadClearancePDF()
+   (main.js) swaps each textarea for a plain <div> that only inherits its
+   INLINE style, never its class — so this never leaks into the PDF either.
+══════════════════════════════════════════════ */
+.clearance-textarea {
+  border: 1px dashed #E8760A;
+  background: #FFFAF3;
+  border-radius: 5px;
+  padding: 8px 10px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.clearance-textarea:hover { background: #FFF3E0; }
+.clearance-textarea:focus { outline: none; background: #FFF3E0; border-style: solid; }
 
 /* ══════════════════════════════════════════════
    PRINT — default page size for anything printed
@@ -4279,6 +4354,186 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
   .clearance-modal-header,
   .clearance-actions { display: none !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   PDF DOWNLOAD — EXAM DOCUMENT (downloadExamRecordPDF(), main.js)
+   Real, permanent classes — not a dynamically-injected <style> block
+   built from a parsed HTML string — so this renders exactly like
+   downloadClearancePDF()'s own live-DOM capture: html2canvas reading
+   ordinary class-based styling from a stylesheet that's been part of
+   the page the whole time, same as .clearance-document above, instead
+   of freshly parsed/injected CSS (which kept coming out with panels
+   silently missing or mispositioned — several different underlying
+   causes across several attempts, but the common thread was always
+   "reconstructing style from a string on the fly"). Every selector
+   scoped under .pdf-exam-doc so none of these (.info-grid is already
+   used elsewhere in this file for something unrelated) ever leak
+   outside this one specific document. */
+.pdf-exam-doc, .pdf-exam-doc * { box-sizing: border-box; margin: 0; padding: 0; }
+.pdf-exam-doc { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 14px; line-height: 1.65; background: #fff; }
+.pdf-exam-doc table { width: 100%; border-collapse: collapse; }
+.pdf-exam-doc .clinic-hdr  { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #E8760A; padding-bottom: 14px; margin-bottom: 20px; }
+.pdf-exam-doc .clinic-hdr-text { text-align: left; }
+.pdf-exam-doc .clinic-name { font-size: 24px; font-weight: 900; color: #E8760A; letter-spacing: -.02em; }
+.pdf-exam-doc .clinic-logo { height: 70px; flex-shrink: 0; }
+.pdf-exam-doc .clinic-sub  { font-size: 16px; font-weight: 700; color: #1C1C1C; }
+.pdf-exam-doc .clinic-doc  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #bbb; margin-top: 6px; }
+.pdf-exam-doc .patient-block { display: flex; gap: 18px; align-items: flex-start; padding: 16px 18px; background: #f9f9f9; border: 1px solid #eee; border-radius: 10px; margin-bottom: 18px; }
+.pdf-exam-doc .avatar { width: 60px; height: 60px; border-radius: 50%; background: #E8760A; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 21px; font-weight: 900; flex-shrink: 0; }
+.pdf-exam-doc .pt-name   { font-size: 18px; font-weight: 800; color: #111; margin-bottom: 2px; }
+.pdf-exam-doc .pt-id     { font-size: 11px; font-family: monospace; color: #aaa; margin-bottom: 5px; }
+.pdf-exam-doc .pt-meta   { display: flex; flex-wrap: wrap; gap: 5px 14px; }
+.pdf-exam-doc .pt-meta span { font-size: 11px; color: #555; }
+.pdf-exam-doc .pt-addr   { font-size: 11px; color: #999; margin-top: 3px; }
+.pdf-exam-doc .issuer    { text-align: right; flex-shrink: 0; min-width: 160px; }
+.pdf-exam-doc .iss-lbl   { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #bbb; margin-bottom: 3px; }
+.pdf-exam-doc .iss-name  { font-size: 15px; font-weight: 700; color: #111; }
+.pdf-exam-doc .iss-date  { font-size: 11px; color: #888; }
+.pdf-exam-doc .iss-id    { font-size: 10px; font-family: monospace; color: #bbb; margin-top: 2px; }
+.pdf-exam-doc .tbl-hdr th { background: #f5f5f5; padding: 9px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pdf-exam-doc .tbl-border { border: 1px solid #eee; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+.pdf-exam-doc .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.pdf-exam-doc .info-box  { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.pdf-exam-doc .ib-lbl    { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #aaa; margin-bottom: 3px; }
+.pdf-exam-doc .ib-val    { font-size: 16px; font-weight: 800; color: #111; overflow-wrap: anywhere; }
+.pdf-exam-doc .ib-unit   { font-size: 10px; color: #aaa; font-weight: 400; }
+.pdf-exam-doc .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.pdf-exam-doc .diag-box  { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.pdf-exam-doc .db-lbl    { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #aaa; margin-bottom: 4px; }
+.pdf-exam-doc .db-val    { font-size: 16px; font-weight: 800; color: #111; margin-bottom: 3px; overflow-wrap: anywhere; }
+.pdf-exam-doc .db-sub    { font-size: 11px; color: #555; }
+.pdf-exam-doc .remarks-block { border-top: 1px solid #eee; padding-top: 12px; margin-top: 8px; font-style: italic; font-size: 13px; color: #555; }
+.pdf-exam-doc .sig-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 26px; padding-top: 16px; border-top: 1px dashed #ccc; }
+.pdf-exam-doc .sig-line  { border-top: 1px solid #111; padding-top: 7px; text-align: center; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.pdf-exam-doc .sig-sub   { font-size: 10px; color: #888; margin-top: 3px; text-align: center; }
+.pdf-exam-doc .prep-by   { font-size: 10px; color: #888; text-align: right; margin-top: 12px; }
+.pdf-exam-doc .stamp     { font-size: 10px; color: #ccc; text-align: right; font-family: monospace; margin-top: 16px; }
+
+/* ── PDF DOWNLOAD — PRESCRIPTION DOCUMENT (downloadRxRecordPDF(), main.js) ──
+   Same reasoning/architecture as .pdf-exam-doc above. */
+.pdf-rx-doc, .pdf-rx-doc * { box-sizing: border-box; margin: 0; padding: 0; }
+.pdf-rx-doc { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 14px; line-height: 1.5; background: #fff; }
+.pdf-rx-doc table { width: 100%; border-collapse: collapse; }
+.pdf-rx-doc .clinic-hdr  { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #E8760A; padding-bottom: 10px; margin-bottom: 14px; }
+.pdf-rx-doc .clinic-hdr-text { text-align: left; }
+.pdf-rx-doc .clinic-name { font-size: 22px; font-weight: 900; color: #E8760A; letter-spacing: -.02em; }
+.pdf-rx-doc .clinic-logo { height: 58px; flex-shrink: 0; }
+.pdf-rx-doc .clinic-sub  { font-size: 15px; font-weight: 700; color: #1C1C1C; }
+.pdf-rx-doc .clinic-doc  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #bbb; margin-top: 4px; }
+.pdf-rx-doc .patient-block { display: flex; gap: 16px; align-items: flex-start; padding: 12px 16px; background: #f9f9f9; border: 1px solid #eee; border-radius: 10px; margin-bottom: 12px; }
+.pdf-rx-doc .avatar { width: 52px; height: 52px; border-radius: 50%; background: #E8760A; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 19px; font-weight: 900; flex-shrink: 0; }
+.pdf-rx-doc .pt-name   { font-size: 17px; font-weight: 800; color: #111; margin-bottom: 2px; }
+.pdf-rx-doc .pt-id     { font-size: 11px; font-family: monospace; color: #aaa; margin-bottom: 4px; }
+.pdf-rx-doc .pt-meta   { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.pdf-rx-doc .pt-meta span { font-size: 11px; color: #555; }
+.pdf-rx-doc .issuer    { text-align: right; flex-shrink: 0; min-width: 160px; }
+.pdf-rx-doc .iss-lbl   { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #bbb; margin-bottom: 3px; }
+.pdf-rx-doc .iss-name  { font-size: 14px; font-weight: 700; color: #111; }
+.pdf-rx-doc .iss-date  { font-size: 11px; color: #888; }
+.pdf-rx-doc .iss-id    { font-size: 10px; font-family: monospace; color: #bbb; margin-top: 2px; }
+.pdf-rx-doc .tbl-hdr th { background: #f5f5f5; padding: 7px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pdf-rx-doc .tbl-border { border: 1px solid #eee; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.pdf-rx-doc .diag-box  { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; min-width: 0; }
+.pdf-rx-doc .db-lbl    { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #aaa; margin-bottom: 3px; }
+.pdf-rx-doc .db-val    { font-size: 15px; font-weight: 800; color: #111; overflow-wrap: anywhere; }
+.pdf-rx-doc .info-grid { display: grid; gap: 8px; margin-bottom: 12px; }
+.pdf-rx-doc .info-box  { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.pdf-rx-doc .ib-lbl    { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #aaa; margin-bottom: 2px; }
+.pdf-rx-doc .ib-val    { font-size: 15px; font-weight: 800; color: #111; overflow-wrap: anywhere; }
+.pdf-rx-doc .ib-unit   { font-size: 10px; color: #aaa; font-weight: 400; }
+.pdf-rx-doc .remarks-block { border-top: 1px solid #eee; padding-top: 10px; margin-top: 6px; font-style: italic; font-size: 13px; color: #555; }
+.pdf-rx-doc .sig-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 16px; padding-top: 12px; border-top: 1px dashed #ccc; }
+.pdf-rx-doc .sig-line  { border-top: 1px solid #111; padding-top: 6px; text-align: center; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.pdf-rx-doc .sig-sub   { font-size: 10px; color: #888; margin-top: 2px; text-align: center; }
+.pdf-rx-doc .prep-by   { font-size: 10px; color: #888; text-align: right; margin-top: 8px; }
+.pdf-rx-doc .stamp     { font-size: 10px; color: #ccc; text-align: right; font-family: monospace; margin-top: 8px; }
+.pdf-rx-doc .valid-pill { display: inline-block; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-top: 4px; }
+
+/* ── PDF DOWNLOAD — DASHBOARD REPORT (downloadDashboardReportPDF(), main.js) ──
+   Same reasoning/architecture as .pdf-exam-doc above. */
+.pdf-dash-doc, .pdf-dash-doc * { box-sizing: border-box; margin: 0; padding: 0; }
+.pdf-dash-doc { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 13px; line-height: 1.6; background: #fff; }
+.pdf-dash-doc table { width: 100%; border-collapse: collapse; }
+.pdf-dash-doc .clinic-hdr  { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #E8760A; padding-bottom: 14px; margin-bottom: 16px; }
+.pdf-dash-doc .clinic-logo { height: 60px; flex-shrink: 0; }
+.pdf-dash-doc .clinic-name { font-size: 22px; font-weight: 900; color: #E8760A; letter-spacing: -.02em; }
+.pdf-dash-doc .clinic-sub  { font-size: 15px; font-weight: 700; color: #1C1C1C; }
+.pdf-dash-doc .clinic-doc  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #bbb; margin-top: 4px; }
+.pdf-dash-doc .rpt-meta    { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 22px; }
+.pdf-dash-doc .rpt-section { margin-bottom: 20px; }
+.pdf-dash-doc tr { page-break-inside: avoid; }
+.pdf-dash-doc .rpt-sec-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #999; margin-bottom: 6px; }
+.pdf-dash-doc .rpt-empty   { font-size: 12px; color: #aaa; font-style: italic; padding: 8px 0; }
+.pdf-dash-doc .tbl-hdr th  { background: #f5f5f5; padding: 8px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pdf-dash-doc .tbl-border  { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
+.pdf-dash-doc .sig-block   { margin-top: 32px; padding-top: 16px; border-top: 1px dashed #ccc; display: flex; justify-content: flex-end; }
+.pdf-dash-doc .sig-col     { text-align: center; min-width: 220px; }
+.pdf-dash-doc .sig-line    { border-top: 1px solid #111; padding-top: 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.pdf-dash-doc .sig-sub     { font-size: 10px; color: #888; margin-top: 3px; }
+
+/* ── PDF DOWNLOAD — REPORTS PAGE (downloadReportPDF(), pages.js) ──
+   Same reasoning/architecture as .pdf-exam-doc above. */
+.pdf-report-doc, .pdf-report-doc * { box-sizing: border-box; margin: 0; padding: 0; }
+.pdf-report-doc { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #111; background: #fff; }
+.pdf-report-doc .hdr          { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
+.pdf-report-doc .hdr-left     { display: flex; align-items: center; gap: 10px; }
+.pdf-report-doc .hdr-logo     { height: 42px; width: 42px; object-fit: contain; flex-shrink: 0; }
+.pdf-report-doc .clinic-name  { font-size: 14pt; font-weight: 700; letter-spacing: -.02em; }
+.pdf-report-doc .clinic-sub   { font-size: 7.5pt; color: #555; margin-top: 3px; }
+.pdf-report-doc .hdr-right    { text-align: right; }
+.pdf-report-doc .hdr-tag      { font-size: 6.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #888; }
+.pdf-report-doc .rpt-title    { font-size: 11pt; font-weight: 700; margin-bottom: 2px; }
+.pdf-report-doc .rpt-meta     { font-size: 7.5pt; color: #555; margin-bottom: 14px; }
+.pdf-report-doc .rpt-meta span { margin-right: 12px; }
+.pdf-report-doc table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+.pdf-report-doc thead tr { background: #f3f4f6 !important; }
+.pdf-report-doc th { padding: 6px 8px; text-align: left; font-size: 7.5pt; font-weight: 700; border: 1px solid #d1d5db; background: #f3f4f6; }
+.pdf-report-doc td { padding: 5px 8px; border: 1px solid #e5e7eb; vertical-align: top; line-height: 1.35; }
+.pdf-report-doc tbody tr:nth-child(even) td { background: #fafafa; }
+.pdf-report-doc tr { page-break-inside: avoid; }
+.pdf-report-doc code { font-family: 'Courier New', monospace; font-size: 7.5pt; }
+/* The results table (#rpt-table-area) is CLONED straight from the live,
+   on-screen table — not hand-built like the Exam/Rx/Dashboard markup —
+   so it carries the app's own .tbl class along with it. html2canvas's
+   own windowWidth option (set to the printable content width, ~643px,
+   for correct proportions) makes ITS internal render pass evaluate
+   @media queries against that narrow width, which activates this app's
+   real mobile-responsive .tbl CSS (global.css) — the one that turns
+   each row into a stacked, labeled card instead of a table row. That's
+   exactly the stacked layout that showed up instead of real columns.
+   Forcing plain table display back on, regardless of which breakpoint
+   html2canvas's capture pass happens to be evaluating against. */
+.pdf-report-doc .tbl { display: table !important; }
+.pdf-report-doc .tbl thead { display: table-header-group !important; }
+.pdf-report-doc .tbl tbody { display: table-row-group !important; }
+.pdf-report-doc .tbl tr { display: table-row !important; background: transparent !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin-bottom: 0 !important; }
+.pdf-report-doc .tbl th,
+.pdf-report-doc .tbl td { display: table-cell !important; text-align: left !important; white-space: normal !important; }
+.pdf-report-doc .tbl td[data-label]::before { content: none !important; }
+.pdf-report-doc .badge { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 7pt; font-weight: 700; }
+.pdf-report-doc .badge-pending     { background: #FFF3E0; color: #E8891C; }
+.pdf-report-doc .badge-approved    { background: #E8F5E9; color: #2E7D32; }
+.pdf-report-doc .badge-cancelled   { background: #FFEBEE; color: #C62828; }
+.pdf-report-doc .badge-inactive    { background: #FFEBEE; color: #C62828; }
+.pdf-report-doc .badge-disapproved { background: #fef2f2; color: #991b1b; }
+.pdf-report-doc .badge-completed   { background: #F5F5F5; color: #616161; }
+.pdf-report-doc .badge-no-show     { background: #EDE9FE; color: #6D28D9; }
+.pdf-report-doc .badge-active      { background: #E3F2FD; color: #1565C0; }
+.pdf-report-doc .badge-admin       { background: #EDE9FE; color: #5B21B6; }
+.pdf-report-doc .badge-staff       { background: #DBEAFE; color: #1D4ED8; }
+.pdf-report-doc .badge-doctor      { background: #E8F5E9; color: #2E7D32; }
+.pdf-report-doc .badge-patient     { background: #FFF0DC; color: #92400E; }
+.pdf-report-doc .charts-section { margin-top: 20px; }
+.pdf-report-doc .section-header { border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-bottom: 14px; }
+.pdf-report-doc .section-title  { font-size: 11pt; font-weight: 700; }
+.pdf-report-doc .section-sub    { font-size: 7.5pt; color: #666; margin-top: 2px; }
+.pdf-report-doc .chart-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pdf-report-doc .chart-box    { border: 1px solid #e5e7eb; border-radius: 4px; padding: 12px; page-break-inside: avoid; }
+.pdf-report-doc .chart-label  { font-size: 8.5pt; font-weight: 700; margin-bottom: 8px; }
+.pdf-report-doc .sig-block { margin-top: 28px; padding-top: 14px; border-top: 1px dashed #ccc; display: flex; justify-content: flex-end; }
+.pdf-report-doc .sig-col   { text-align: center; min-width: 200px; }
+.pdf-report-doc .sig-line  { border-top: 1px solid #111; padding-top: 6px; font-size: 8pt; font-weight: 700; text-transform: uppercase; }
+.pdf-report-doc .sig-sub   { font-size: 7pt; color: #888; margin-top: 2px; }
 
 
 /* ── Login card shake animation ─────────────────────────────── */

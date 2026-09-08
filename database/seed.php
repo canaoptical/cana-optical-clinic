@@ -232,19 +232,37 @@ $insP->execute(['P026',$aliasUid,'Maria','Santos','Female','1990-03-15',35,'0917
 log_msg('Patients seeded (P001–P026).');
 
 // ── Clinic Services ───────────────────────────────────────────────
+// [name, description, icon, bookable, patientVisible] — the last two:
+// `bookable` = offered as a selectable appointment type at all;
+// `patientVisible` = patients themselves can see/pick it (both on the
+// public Services page and their own booking wizard) as opposed to
+// staff/admin-only. See clinic_services' own column comments (schema.sql).
+// No per-service duration — every appointment runs on the one clinic-wide
+// interval (clinic_settings.default_duration).
 $svcRows = [
-    ['Eye Examination',                   "A comprehensive assessment of the patient's eye condition to evaluate vision and overall eye health.",    30,'eye'],
-    ['Vision Screening',                  'A basic check to determine if a patient has possible vision problems that may require further examination.',15,'activity'],
-    ['Refraction',                        "A procedure used to determine the correct lens power needed to improve the patient's vision.",             25,'search'],
-    ['Diagnosis of Refractive Errors',    'Identification of vision conditions such as nearsightedness, farsightedness, and astigmatism.',           25,'alert-circle'],
-    ['Prescription of Corrective Lenses', "Issuance of eyeglass or contact lens prescriptions based on the patient's vision needs.",                 20,'file-text'],
-    ['Lens Fitting',                      'Adjustment and fitting of lenses to ensure proper alignment, comfort, and visual clarity.',               20,'award'],
-    ['Optical Frame Selection',           'Assisting patients in choosing frames that fit properly and suit their preferences.',                     15,'archive'],
-    ['Follow-up Consultation',            "Subsequent visits to review the patient's vision condition and assess any changes.",                      20,'refresh-cw'],
+    // Main bookable services — offered to patients and staff alike, both
+    // as an appointment type and on the public Services page.
+    ['Comprehensive Eye Examination',  'A thorough assessment of overall eye health and visual acuity, including refraction and internal/external eye evaluation.', 'eye',      1,1],
+    ['Optical Frame Selection',        'Assisting patients in choosing frames that fit properly and suit their preferences.',                                       'archive',  1,1],
+    ['Eyeglass/Contact Lens Fitting',  'Fitting and adjustment of eyeglasses or contact lenses for proper alignment, comfort, and visual clarity.',                 'award',    1,1],
+    // Staff-only bookable — never shown to patients (booking wizard or
+    // public site), but selectable by staff/admin booking a follow-up on
+    // a patient's behalf. Name intentionally kept exactly as-is — depended
+    // on by pages.js's appointmentWizardHtml() and the doctor's exam
+    // wizard follow-up flow.
+    ['Follow-up Consultation',         "Subsequent visits to review the patient's vision condition and assess any changes after treatment or prescription.",        'refresh-cw',1,0],
+    // Display-only — listed on the public Services page for information,
+    // never a selectable appointment type for anyone.
+    ['Eye Refraction (Manual and Autorefraction)', 'Determines the correct lens power needed to improve vision, using both manual retinoscopy and computerized autorefraction.', 'search',    0,1],
+    ['Spot Vision Screening',          'A quick, portable screening to detect possible vision problems that may need further examination.',                        'activity',  0,1],
+    ['Ishihara Test (Color Blindness Test)', 'A color vision test using specially designed plates to detect red-green color blindness.',                            'file-text', 0,1],
+    ['Dispensing of Eyeglasses',       'Preparation and release of finished eyeglasses to the patient, including fit verification.',                               'package',   0,1],
+    ['Slit Lamp Examination',          'A detailed examination of the front structures of the eye using a specialized microscope with an intense light source.',    'settings',  0,1],
+    ['Tonometry Test',                 'Measures intraocular pressure to help screen for glaucoma.',                                                                'alert-circle',0,1],
 ];
-$insSvc = $pdo->prepare('INSERT INTO clinic_services (name,description,duration,status,icon) VALUES (?,?,?,?,?)');
-foreach ($svcRows as [$name,$desc,$dur,$icon]) {
-    $insSvc->execute([$name,$desc,$dur,'active',$icon]);
+$insSvc = $pdo->prepare('INSERT INTO clinic_services (name,description,status,icon,bookable,patient_visible) VALUES (?,?,?,?,?,?)');
+foreach ($svcRows as [$name,$desc,$icon,$bookable,$patientVisible]) {
+    $insSvc->execute([$name,$desc,'active',$icon,$bookable,$patientVisible]);
 }
 log_msg('Clinic services seeded.');
 

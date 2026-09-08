@@ -2,7 +2,13 @@
 // ================================================================
 //  CANAOPTICALCLINIC — api/services/public.php
 //  GET — public endpoint, no auth required.
-//  Returns active services sorted by sort_order for the public page.
+//  Returns active, patient-visible services sorted by sort_order for the
+//  public Services page. patient_visible = 0 (currently just Follow-up
+//  Consultation, a staff-only appointment type) is excluded here even
+//  though it's `active` — it's an internal booking type, not a service
+//  the clinic advertises publicly. `bookable` is irrelevant to this
+//  endpoint: a display-only service (bookable = 0) still belongs on the
+//  public page, it's just never offered in the appointment wizard.
 // ================================================================
 
 require_once '../../config/db.php';
@@ -15,15 +21,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 try {
     $pdo  = getDB();
     $rows = $pdo->query(
-        "SELECT id, name, description, duration, icon FROM clinic_services
-         WHERE status = 'active' ORDER BY sort_order ASC, id ASC"
+        "SELECT id, name, description, icon FROM clinic_services
+         WHERE status = 'active' AND patient_visible = 1 ORDER BY sort_order ASC, id ASC"
     )->fetchAll();
 
     $services = array_map(fn($r) => [
         'id'          => (int)$r['id'],
         'name'        => $r['name'],
         'description' => $r['description'] ?? '',
-        'duration'    => (int)($r['duration'] ?? 0),
         'icon'        => $r['icon'] ?? 'eye',
     ], $rows);
 

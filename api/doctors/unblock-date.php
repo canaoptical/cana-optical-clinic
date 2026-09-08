@@ -14,7 +14,8 @@ startSession();
 if (!isset($_SESSION['user_id'])) {
     jsonResponse(['success' => false, 'message' => 'Not authenticated.'], 401);
 }
-if (!in_array($_SESSION['role'] ?? '', ['admin', 'staff'], true)) {
+$role = $_SESSION['role'] ?? '';
+if (!in_array($role, ['admin', 'staff'], true)) {
     jsonResponse(['success' => false, 'message' => 'Only admin or staff may unblock dates.'], 403);
 }
 

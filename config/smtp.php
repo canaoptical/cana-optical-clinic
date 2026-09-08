@@ -252,20 +252,32 @@ HTML;
 // in-app Appointment Details modal already shows a Cancellation/
 // Disapproval Reason as its own highlighted block, not just appended
 // text after the sentence.
-function systemEmailBody(string $name, string $title, string $message, string $ctaUrl = '', string $ctaLabel = '', string $ctaDate = '', string $reasonLabel = '', string $reasonText = ''): string {
+function systemEmailBody(string $name, string $title, string $message, string $ctaUrl = '', string $ctaLabel = '', string $ctaDate = '', string $reasonLabel = '', string $reasonText = '', string $reasonTone = 'negative'): string {
     $safeTitle   = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
     $safeMessage = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
 
     $reasonHtml = '';
     if ($reasonText) {
+        // Tone matches what the text actually means, same colors the in-app
+        // UI already uses for the same distinction (badges, alerts, etc.):
+        // 'negative' — cancellation/disapproval, something didn't happen —
+        // reads as a warning, same red as those. 'neutral' — a reschedule
+        // note or other FYI detail that isn't bad news on its own — reads
+        // as an informational callout in the clinic's own brand orange
+        // instead, so it doesn't look like something went wrong.
+        $tones = [
+            'negative' => ['bg' => '#FEF2F2', 'border' => '#FECACA', 'label' => '#991B1B'],
+            'neutral'  => ['bg' => '#FFF7ED', 'border' => '#FDE9C8', 'label' => '#C2540A'],
+        ];
+        $tone = $tones[$reasonTone] ?? $tones['negative'];
         $safeReasonLabel = htmlspecialchars(strtoupper($reasonLabel ?: 'Reason'), ENT_QUOTES, 'UTF-8');
         $safeReasonText  = nl2br(htmlspecialchars($reasonText, ENT_QUOTES, 'UTF-8'));
         $reasonHtml = <<<REASON
         <tr>
           <td style="padding:0 40px 36px;">
-            <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:16px 20px;">
+            <div style="background:{$tone['bg']};border:1px solid {$tone['border']};border-radius:12px;padding:16px 20px;">
               <div style="font-family:'Poppins','Segoe UI',Arial,sans-serif;font-size:11px;font-weight:700;
-                          color:#991B1B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+                          color:{$tone['label']};text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
                 {$safeReasonLabel}
               </div>
               <div style="font-family:'Poppins','Segoe UI',Arial,sans-serif;font-size:14px;color:#374151;line-height:1.6;">
@@ -389,6 +401,7 @@ CTA;
             </div>
           </td>
         </tr>
+{$reasonHtml}
 {$ctaHtml}
         <!-- Divider -->
         <tr>

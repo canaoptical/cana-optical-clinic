@@ -178,7 +178,7 @@ try {
                 _emailPatientNotice(
                     $pdo, $patientUid, 'Appointment Not Approved',
                     "Your appointment request with {$doctor} on {$fmtDate} could not be approved.",
-                    '', '', '', 'Reason', $disapprovalReason
+                    '', '', '', 'Reason for Disapproval', $disapprovalReason
                 );
             } elseif ($newStatus === 'no-show') {
                 $msg = "You were marked as a no-show for your appointment with {$doctor} on {$fmtDate} at {$appt['time']}.";
@@ -210,8 +210,8 @@ try {
 
         // Conflict check — exclude the appointment being rescheduled itself.
         $durStr = $pdo->query('SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn();
-        preg_match('/(\d+)/', $durStr ?: '30', $dm);
-        $durationMin = isset($dm[1]) ? (int)$dm[1] : 30;
+        preg_match('/(\d+)/', $durStr ?: '45', $dm);
+        $durationMin = isset($dm[1]) ? (int)$dm[1] : 45;
         $conflict = checkApptConflict($pdo, $appt['doctor_id'], $newDate, $newTime, $durationMin, $id);
         if ($conflict !== null) {
             jsonResponse(['success' => false, 'message' =>
@@ -254,10 +254,19 @@ try {
         // cron-reminder emails elsewhere in this file/helpers.php.
         if ($patientUid = $getPatientUserId()) {
             $fmtDate = date('M j, Y', strtotime($newDate));
-            $rescheduleMsg = "Your appointment has been rescheduled to {$fmtDate} at {$newTime}."
-                . ($note ? " Note: {$note}" : '');
-            createNotification($pdo, $patientUid, 'rescheduled', 'Appointment Rescheduled', $rescheduleMsg);
-            _emailPatientNotice($pdo, $patientUid, 'Appointment Rescheduled', $rescheduleMsg);
+            $rescheduleBase = "Your appointment has been rescheduled to {$fmtDate} at {$newTime}.";
+            // In-app notification stays a single plain-text line (no layout
+            // to separate a note into), so the note is appended inline there
+            // same as before. The email keeps it in its own highlighted box
+            // instead — same treatment cancellation/disapproval reasons get
+            // (see the 'cancelled'/'disapproved' branches above) — in a
+            // neutral orange tone rather than red, since a reschedule note
+            // isn't bad news the way those are.
+            createNotification($pdo, $patientUid, 'rescheduled', 'Appointment Rescheduled', $rescheduleBase . ($note ? " Note: {$note}" : ''));
+            _emailPatientNotice(
+                $pdo, $patientUid, 'Appointment Rescheduled', $rescheduleBase,
+                '', '', '', 'Reschedule Note', $note, 'neutral'
+            );
         }
 
         jsonResponse(['success' => true]);
@@ -339,8 +348,8 @@ try {
         $newDoctorName = 'Dr. ' . trim($doc['first_name'] . _mi($doc['middle_name']) . ' ' . $doc['last_name']);
 
         $durStr = $pdo->query('SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn();
-        preg_match('/(\d+)/', $durStr ?: '30', $dm);
-        $durationMin = isset($dm[1]) ? (int)$dm[1] : 30;
+        preg_match('/(\d+)/', $durStr ?: '45', $dm);
+        $durationMin = isset($dm[1]) ? (int)$dm[1] : 45;
         $conflict = checkApptConflict($pdo, $newDoctorId, $appt['date'], $appt['time'], $durationMin, $id);
         if ($conflict !== null) {
             jsonResponse(['success' => false, 'message' =>

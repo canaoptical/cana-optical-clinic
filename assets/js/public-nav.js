@@ -28,18 +28,36 @@
     })
   }
 
-  fetch(base + 'api/auth/me.php')
-    .then(function (r) { return r.json() })
-    .then(function (d) {
-      if (!d || !d.success || !d.user) return
-      applyProfileUI(d.user, base, d.role)
-      prefillContactForm(d.user)
-      // Hide the hero "Register" button — logged-in users already have an account
-      document.querySelectorAll('a[href*="#register"]').forEach(function (el) {
-        el.style.display = 'none'
+  function syncSessionUI() {
+    fetch(base + 'api/auth/me.php')
+      .then(function (r) { return r.json() })
+      .then(function (d) {
+        if (!d || !d.success || !d.user) return
+        applyProfileUI(d.user, base, d.role)
+        prefillContactForm(d.user)
+        // Hide the hero "Register" button — logged-in users already have an account
+        document.querySelectorAll('a[href*="#register"]').forEach(function (el) {
+          el.style.display = 'none'
+        })
       })
-    })
-    .catch(function () { /* not logged in, or PHP unavailable — leave the default Login UI */ })
+      .catch(function () { /* not logged in, or PHP unavailable — leave the default Login UI */ })
+  }
+  syncSessionUI()
+
+  // Re-check on bfcache restore — most mobile browsers (iOS Safari/Chrome
+  // especially) restore a page navigated to via Back instantly from the
+  // back-forward cache, replaying the DOM exactly as it was frozen at
+  // navigation-away time WITHOUT re-running this script at all. If that
+  // snapshot was taken before the fetch above had resolved (e.g. the visitor
+  // logged in on app.html, then backed onto this page, whose own earlier
+  // load never got to swap the navbar before it was frozen), the restored
+  // page shows the stale "Login" link even though the session is still
+  // active — previously nothing re-ran until a manual refresh. `persisted`
+  // is true only for a bfcache restore, not a normal fresh load (where this
+  // event also fires, redundantly, right after the top-level call above).
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) syncSessionUI()
+  })
 
   // Pre-sync from localStorage so name shows immediately before the API responds
   try {
@@ -47,8 +65,13 @@
     var _pl = localStorage.getItem('_canaopticalclinic_logo_url')
     if (_pn) document.querySelectorAll('.nav-logo-name, .footer-logo-name').forEach(function (el) { el.textContent = _pn })
     if (_pl) {
-      document.querySelectorAll('#site-logo-img, .footer-logo-img').forEach(function (img) { img.src = _pl })
-      document.querySelectorAll('#site-favicon').forEach(function (link) { link.href = _pl })
+      // _pl is stored root-relative (e.g. "assets/images/logo/x.png") by
+      // whichever page last saved it (app.html/index.html, both at the
+      // site root) — needs `base` prepended here or it 404s one level
+      // down on /pages/*.html, resolving against the wrong directory.
+      var _plUrl = base + _pl
+      document.querySelectorAll('#site-logo-img, .footer-logo-img').forEach(function (img) { img.src = _plUrl })
+      document.querySelectorAll('#site-favicon').forEach(function (link) { link.href = _plUrl })
     }
   } catch (e) {}
 
@@ -338,7 +361,10 @@
   // Real-time branding sync: when admin saves clinic settings in another tab
   window.addEventListener('storage', function (e) {
     if (e.key === '_canaopticalclinic_logo_url' && e.newValue) {
-      var url = e.newValue
+      // Same root-relative-path fix as the pre-sync block above — the
+      // stored value has no `../`, so it needs `base` prepended on
+      // /pages/*.html or the browser resolves it against the wrong folder.
+      var url = base + e.newValue
       document.querySelectorAll('#site-logo-img, .footer-logo-img').forEach(function (img) { img.src = url })
       document.querySelectorAll('#site-favicon').forEach(function (link) { link.href = url })
     }

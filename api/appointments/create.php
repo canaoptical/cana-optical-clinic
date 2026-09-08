@@ -33,7 +33,7 @@ $doctorId    = trim($b['doctorId']    ?? '');
 $doctorName  = trim($b['doctorName']  ?? '');
 $date        = trim($b['date']        ?? '');
 $time        = trim($b['time']        ?? '');
-$type        = trim($b['type']        ?? 'Eye Examination');
+$type        = trim($b['type']        ?? 'Comprehensive Eye Examination');
 $notes       = trim($b['notes']       ?? '');
 $status      = trim($b['status']      ?? 'pending');
 $termsAgreed = !empty($b['termsAgreed']);
@@ -92,23 +92,6 @@ try {
             jsonResponse(['success' => false, 'message' => $msg]);
         }
 
-        // Enforce the clinic's max-appointments-per-patient-per-day cap —
-        // separate from the per-doctor cap below, and checked regardless of
-        // which doctor (or "any doctor") this request is for, since the
-        // point is capping the PATIENT's own day, not any one doctor's.
-        // Cancelled/disapproved don't count — they're not actually
-        // occupying the patient's day either.
-        $maxPerPatientDay = (int)($pdo->query('SELECT max_appts_per_patient_per_day FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn() ?: 1);
-        $pcs = $pdo->prepare(
-            "SELECT COUNT(*) FROM appointments
-             WHERE patient_id = ? AND date = ? AND status NOT IN ('cancelled','disapproved')"
-        );
-        $pcs->execute([$patientId, $date]);
-        if ((int)$pcs->fetchColumn() >= $maxPerPatientDay) {
-            jsonResponse(['success' => false, 'message' =>
-                'You already have ' . ($maxPerPatientDay === 1 ? 'an appointment' : $maxPerPatientDay . ' appointments') . ' scheduled for this date. Please choose another date, or contact the clinic directly if you need an additional visit the same day.']);
-        }
-
         // Reject self-service bookings on a date the doctor has explicitly
         // blocked, even if a stale frontend calendar let the request through.
         // Admin/staff keep discretion to book anyway (e.g. squeezing in an
@@ -144,8 +127,8 @@ try {
     // (same doctor, same date, within the clinic's default appointment duration).
     // Applies to all roles — admin/staff bookings are equally subject to gaps.
     $durStr = $pdo->query('SELECT default_duration FROM clinic_settings WHERE id = 1 LIMIT 1')->fetchColumn();
-    preg_match('/(\d+)/', $durStr ?: '30', $dm);
-    $durationMin = isset($dm[1]) ? (int)$dm[1] : 30;
+    preg_match('/(\d+)/', $durStr ?: '45', $dm);
+    $durationMin = isset($dm[1]) ? (int)$dm[1] : 45;
 
     if ($anyDoctor) {
         // No specific doctor chosen — confirm at least one doctor who could

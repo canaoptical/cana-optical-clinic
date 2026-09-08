@@ -33,6 +33,33 @@ $required = [$first, $last, $dob, $gender, $address, $contact, $email, $pass];
 if (in_array('', $required, true)) {
     jsonResponse(['success' => false, 'message' => 'Please complete all required fields.']);
 }
+if (!isValidContact($contact)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid 11-digit contact number.']);
+}
+if (!looksLikeAddress($address)) {
+    jsonResponse(['success' => false, 'message' => 'Please enter your complete address.']);
+}
+// Self-registration creates a real online account the holder personally
+// consents to (Terms, Data Privacy Notice, password-protected access to
+// their own health records) — that requires legal capacity the client-
+// side check (regNextStep(), auth.js) already promises but, until now,
+// never actually enforced server-side, so a direct POST here could
+// bypass it entirely.
+//
+// 13 is the floor — self-registration below that is refused outright.
+// A younger patient can still get an account: staff/admin create it
+// directly via Add Patient (see maxDobFor18()'s doc comment, main.js —
+// that path was never gated by age at all, any age is fine there).
+$dobDate = DateTime::createFromFormat('Y-m-d', $dob);
+if (!$dobDate || $dobDate->format('Y-m-d') !== $dob) {
+    jsonResponse(['success' => false, 'message' => 'Please enter a valid date of birth.']);
+}
+$now = new DateTime();
+$age = (int)$dobDate->diff($now)->y;
+if ($age < 13) {
+    jsonResponse(['success' => false, 'message' =>
+        'You must be at least 13 years old to create an account. Younger patients may be registered by clinic staff instead.']);
+}
 if ($pwError = validatePasswordPolicy($pass)) {
     jsonResponse(['success' => false, 'message' => $pwError]);
 }

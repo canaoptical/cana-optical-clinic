@@ -224,6 +224,11 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `contact`         VARCHAR(20)  DEFAULT NULL,
   `address`         TEXT         DEFAULT NULL,
   `occupation`      VARCHAR(100) DEFAULT NULL,
+  -- Free-text, self-reported or staff-recorded (conditions, allergies,
+  -- ongoing medications, past eye surgeries, etc.) — surfaced read-only in
+  -- the exam wizard's Patient Info step so the doctor has it in view while
+  -- examining, regardless of the visit's service type.
+  `medical_history` TEXT         DEFAULT NULL,
   `qr_data`         VARCHAR(150) DEFAULT NULL,
   `registered_date` DATE         DEFAULT NULL,
   `last_visit`      DATE         DEFAULT NULL,
@@ -318,6 +323,7 @@ CREATE TABLE IF NOT EXISTS `consultations` (
   `assessment`               TEXT         DEFAULT NULL,  -- doctor's notes/reasoning
   `recommendation`           TEXT         DEFAULT NULL,  -- the plan — what happens next
   `follow_up_date`           DATE         DEFAULT NULL,
+  `follow_up_time`           VARCHAR(10)  DEFAULT NULL,  -- e.g. "10:00 AM" — optional, only meaningful alongside follow_up_date
   `status`                   ENUM('completed','cancelled','no-show') NOT NULL DEFAULT 'completed',
   -- Set together with examinations.archived_at when the exam from the same
   -- visit is archived (Settings > Archives) — a consultation/prescription
@@ -462,14 +468,30 @@ CREATE TABLE IF NOT EXISTS `qr_scan_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Clinic Services ──────────────────────────────────────────────
+-- No per-service `duration` column — every appointment slot runs on the
+-- one clinic-wide interval (clinic_settings.default_duration, e.g. "45
+-- min"), so a separate duration per service would just be redundant data
+-- that can never actually differ from it in practice.
 CREATE TABLE IF NOT EXISTS `clinic_services` (
-  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `name`        VARCHAR(100) NOT NULL,
-  `description` TEXT         DEFAULT NULL,
-  `duration`    SMALLINT UNSIGNED NOT NULL DEFAULT 30,
-  `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
-  `icon`        VARCHAR(50)  DEFAULT NULL,
-  `sort_order`  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`            VARCHAR(100) NOT NULL,
+  `description`     TEXT         DEFAULT NULL,
+  `status`          ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  `icon`            VARCHAR(50)  DEFAULT NULL,
+  `sort_order`      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  -- Independent of `status` (which is an on/off switch for the whole
+  -- service everywhere): `bookable` controls whether it's offered as a
+  -- selectable appointment TYPE at all; `patient_visible` controls whether
+  -- PATIENTS specifically can see/pick it — both on the public Services
+  -- page and in their own self-booking wizard. Staff/admin booking on a
+  -- patient's behalf always sees every bookable service regardless of
+  -- patient_visible (e.g. Follow-up Consultation: bookable=1,
+  -- patient_visible=0 — staff-only, invisible to patients and off the
+  -- public site; a display-only service like Slit Lamp Examination is the
+  -- opposite: bookable=0, patient_visible=1 — listed publicly, never a
+  -- pickable appointment type for anyone).
+  `bookable`        TINYINT(1)   NOT NULL DEFAULT 1,
+  `patient_visible` TINYINT(1)   NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -485,16 +507,10 @@ CREATE TABLE IF NOT EXISTS `clinic_settings` (
   `tin_no`                        VARCHAR(50)  NULL DEFAULT NULL,
   `phic_no`                       VARCHAR(50)  NULL DEFAULT NULL,
   `logo_url`                      VARCHAR(255) NULL DEFAULT NULL,
-  `default_duration`              VARCHAR(20)  NOT NULL DEFAULT '30 min',
+  `default_duration`              VARCHAR(20)  NOT NULL DEFAULT '45 min',
   `max_advance_booking`           VARCHAR(20)  NOT NULL DEFAULT '3 months',
   `min_advance_booking`           VARCHAR(20)  NOT NULL DEFAULT '1 day',
   `max_appts_per_doctor_per_day`  SMALLINT UNSIGNED NOT NULL DEFAULT 12,
-  -- Caps how many appointments ONE patient can hold on the same day —
-  -- separate from the per-doctor capacity cap above. Guards against a
-  -- patient accidentally (or deliberately) submitting several same-day
-  -- requests across different doctors/times. Self-service bookings only;
-  -- admin/staff keep discretion, same convention as min_advance_booking.
-  `max_appts_per_patient_per_day` SMALLINT UNSIGNED NOT NULL DEFAULT 1,
   `morning_start`                 VARCHAR(20)  NOT NULL DEFAULT '8:00 AM',
   `morning_end`                   VARCHAR(20)  NOT NULL DEFAULT '12:00 PM',
   `afternoon_start`               VARCHAR(20)  NOT NULL DEFAULT '1:00 PM',
@@ -738,5 +754,80 @@ CREATE TABLE IF NOT EXISTS `about_gallery` (
 --    Existing database:
 --    ALTER TABLE `patients` ADD COLUMN `deletion_requested_at` DATETIME NULL DEFAULT NULL AFTER `booking_restricted`;
 --    ALTER TABLE `patients` ADD COLUMN `deletion_request_reason` TEXT NULL DEFAULT NULL AFTER `deletion_requested_at`;
+--    Default appointment slot interval changed from 30 to 45 minutes.
+--    The column DEFAULT only applies to future rows — an existing
+--    `clinic_settings` row (there's normally just the one, id=1) keeps
+--    whatever value it already has, so also run the UPDATE. Existing
+--    database:
+--    ALTER TABLE `clinic_settings` ALTER `default_duration` SET DEFAULT '45 min';
+--    UPDATE `clinic_settings` SET `default_duration` = '45 min' WHERE `default_duration` = '30 min';
+--    Max Appointments Per Patient Per Day setting removed — patients can
+--    now hold as many same-day appointments as they want (self-service
+--    bookings). No longer read or written anywhere in the app. Existing
+--    database:
+--    ALTER TABLE `clinic_settings` DROP COLUMN IF EXISTS `max_appts_per_patient_per_day`;
+--    Self-registration now allows 13-17 year olds (previously 18+ only) —
+--    no guardian info collected, no staff review; a self-registered minor
+--    account is active immediately, same as an adult one. Guardian
+--    verification (guardian_name/guardian_contact/guardian_approved_at on
+--    `patients`, matching columns on `pending_registrations`) was tried
+--    and then reverted — if an existing database already ran that
+--    migration, drop them:
+--    ALTER TABLE `patients` DROP COLUMN IF EXISTS `guardian_name`;
+--    ALTER TABLE `patients` DROP COLUMN IF EXISTS `guardian_contact`;
+--    ALTER TABLE `patients` DROP COLUMN IF EXISTS `guardian_approved_at`;
+--    ALTER TABLE `pending_registrations` DROP COLUMN IF EXISTS `guardian_name`;
+--    ALTER TABLE `pending_registrations` DROP COLUMN IF EXISTS `guardian_contact`;
+--    Any patient row left inactive (users.is_active = 0) by that reverted
+--    flow needs reactivating by hand — reactivate a legitimate one from
+--    User Management, or delete it if it was a test:
+--    UPDATE `users` u JOIN `patients` p ON p.user_id = u.id SET u.is_active = 1 WHERE u.is_active = 0 AND u.role = 'patient';
+--    A doctor's follow-up recommendation (Consultation step of the exam
+--    wizard) can now carry a specific time slot alongside the date, picked
+--    from the same blocked-date/blocked-time-aware calendar+slot modal the
+--    staff reschedule flow already uses, instead of a bare date. Existing
+--    database:
+--    ALTER TABLE `consultations` ADD COLUMN `follow_up_time` VARCHAR(10) NULL DEFAULT NULL AFTER `follow_up_date`;
+--    Services reorganized into two kinds: bookable (offered as an
+--    appointment type) and patient-visible (shown on the public Services
+--    page / selectable by patients themselves, as opposed to staff-only) —
+--    see clinic_services' own column comments above for the exact
+--    semantics. The full 8-service catalog was replaced with a new
+--    10-service one per the clinic's updated offerings. Existing database:
+--    ALTER TABLE `clinic_services` ADD COLUMN `bookable` TINYINT(1) NOT NULL DEFAULT 1 AFTER `sort_order`;
+--    ALTER TABLE `clinic_services` ADD COLUMN `patient_visible` TINYINT(1) NOT NULL DEFAULT 1 AFTER `bookable`;
+--    DELETE FROM `clinic_services`;
+--    ALTER TABLE `clinic_services` AUTO_INCREMENT = 1;
+--    INSERT INTO `clinic_services` (name, description, duration, status, icon, sort_order, bookable, patient_visible) VALUES
+--    ('Comprehensive Eye Examination', 'A thorough assessment of overall eye health and visual acuity, including refraction and internal/external eye evaluation.', 45, 'active', 'eye', 1, 1, 1),
+--    ('Optical Frame Selection', 'Assisting patients in choosing frames that fit properly and suit their preferences.', 15, 'active', 'archive', 2, 1, 1),
+--    ('Eyeglass/Contact Lens Fitting', 'Fitting and adjustment of eyeglasses or contact lenses for proper alignment, comfort, and visual clarity.', 30, 'active', 'award', 3, 1, 1),
+--    ('Follow-up Consultation', 'Subsequent visits to review the patient''s vision condition and assess any changes after treatment or prescription.', 20, 'active', 'refresh-cw', 4, 1, 0),
+--    ('Eye Refraction (Manual and Autorefraction)', 'Determines the correct lens power needed to improve vision, using both manual retinoscopy and computerized autorefraction.', 20, 'active', 'search', 5, 0, 1),
+--    ('Spot Vision Screening', 'A quick, portable screening to detect possible vision problems that may need further examination.', 10, 'active', 'activity', 6, 0, 1),
+--    ('Ishihara Test (Color Blindness Test)', 'A color vision test using specially designed plates to detect red-green color blindness.', 10, 'active', 'file-text', 7, 0, 1),
+--    ('Dispensing of Eyeglasses', 'Preparation and release of finished eyeglasses to the patient, including fit verification.', 15, 'active', 'package', 8, 0, 1),
+--    ('Slit Lamp Examination', 'A detailed examination of the front structures of the eye using a specialized microscope with an intense light source.', 15, 'active', 'settings', 9, 0, 1),
+--    ('Tonometry Test', 'Measures intraocular pressure to help screen for glaucoma.', 10, 'active', 'alert-circle', 10, 0, 1);
+--    Any EXISTING appointment/consultation/prescription rows keep whatever
+--    service-name text (e.g. "Eye Examination", "Lens Fitting") they were
+--    booked/recorded under — that's free text, not a foreign key, so
+--    deleting/renaming catalog rows doesn't touch historical records; they
+--    simply reference a name no longer in the active catalog.
+--    Per-service `duration` removed entirely — the clinic now runs every
+--    appointment on one uniform interval (clinic_settings.default_duration),
+--    so a per-service override could never actually differ from it and was
+--    just redundant data. api/appointments/taken.php's own per-slot
+--    duration lookup dropped its clinic_services JOIN accordingly — every
+--    booked slot uses the clinic-wide default now. Existing database:
+--    ALTER TABLE `clinic_services` DROP COLUMN `duration`;
+--    `medical_history` re-added to `patients` (a `blood_type`/
+--    `medical_history`/`optical_history` set existed once, was dropped
+--    with no code ever wired to it — see the earlier DROP COLUMN entries
+--    above). This time it's a single free-text field, editable by the
+--    patient (Settings > My Profile), by admin/staff (Add/Edit Patient),
+--    and surfaced read-only to the doctor in the exam wizard's Patient
+--    Info step. Existing database:
+--    ALTER TABLE `patients` ADD COLUMN `medical_history` TEXT NULL DEFAULT NULL AFTER `occupation`;
 
 SET FOREIGN_KEY_CHECKS = 1;

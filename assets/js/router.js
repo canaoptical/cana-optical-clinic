@@ -906,7 +906,7 @@ function _markNotifDropdown(id) {
       const doc = (window.doctors || doctors).find(d => d.name === con.doctor)
       window._staffCalPrefill = {
         doctorId: doc?.id || '', doctorName: doc?.name || con.doctor || '',
-        doctorSpec: doc?.specialization || '', date: con.followUpDate, isFollowUp: true
+        doctorSpec: doc?.specialization || '', date: con.followUpDate, time: con.followUpTime || '', isFollowUp: true
       }
       navigate('create-appointment', { patientId: p.id, patientName: p.name })
     } else {

@@ -132,7 +132,7 @@ if ($type === 'Service') {
 
         $snapshot = [
             'id' => (int)$svc['id'], 'name' => $svc['name'], 'description' => $svc['description'],
-            'duration' => (int)$svc['duration'], 'status' => $svc['status'], 'icon' => $svc['icon'],
+            'status' => $svc['status'], 'icon' => $svc['icon'],
         ];
 
         $pdo->prepare("UPDATE clinic_services SET status = 'inactive' WHERE id = ?")->execute([$profileId]);
@@ -213,11 +213,12 @@ try {
         $snapshot['hours']          = $row['work_hours'] ?? '';
     }
     if ($role === 'Patient') {
-        $snapshot['gender']     = $row['gender']     ?? '';
-        $snapshot['dob']        = $row['dob']        ?? '';
-        $snapshot['age']        = (int)($row['age']  ?? 0);
-        $snapshot['address']    = $row['address']    ?? '';
-        $snapshot['occupation'] = $row['occupation'] ?? '';
+        $snapshot['gender']         = $row['gender']          ?? '';
+        $snapshot['dob']            = $row['dob']              ?? '';
+        $snapshot['age']            = (int)($row['age']        ?? 0);
+        $snapshot['address']        = $row['address']          ?? '';
+        $snapshot['occupation']     = $row['occupation']       ?? '';
+        $snapshot['medicalHistory'] = $row['medical_history']  ?? '';
     }
 
     // Flag as archived and block login

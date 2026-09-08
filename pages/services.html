@@ -153,7 +153,6 @@
           <div class="service-card fade-in" style="animation-delay:${i * 60}ms">
             <div class="service-icon-wrap">${svcIcon(s.icon)}</div>
             <div class="service-title">${s.name}</div>
-            ${s.duration ? `<div class="service-duration"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>~${s.duration} min</div>` : ''}
             <div class="service-desc">${s.description}</div>
           </div>
         </div>`).join('');
