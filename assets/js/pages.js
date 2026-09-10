@@ -1033,6 +1033,15 @@ function pagePatientView() {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
             <div style="font-size:1.4rem;font-weight:800;color:#1C1C1C;letter-spacing:-.02em">${p.name}</div>
             ${badge(pStatus)}
+            <!-- Right up top next to the name/status, not buried in the
+                 Personal Info tab — this is the one thing on the whole
+                 page a doctor genuinely can't afford to miss walking in. -->
+            ${p.medicalHistory ? `
+            <button onclick="window.openMedicalHistoryModal('${p.id}')"
+                    style="display:inline-flex;align-items:center;gap:6px;background:#FEF3C7;color:#92400E;border:1.5px solid #FDE68A;font-size:.72rem;font-weight:700;line-height:1;padding:6px 13px;border-radius:999px;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s"
+                    onmouseover="this.style.background='#FDE68A';this.style.borderColor='#FCD34D'" onmouseout="this.style.background='#FEF3C7';this.style.borderColor='#FDE68A'">
+              <span style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${ic('alert-circle','icon-xs')}</span><span>Medical History</span>
+            </button>` : ''}
           </div>
           <div style="font-size:.82rem;color:#6B7280;margin-bottom:14px">
             Patient ID: <strong style="color:#1C1C1C;font-family:monospace">${p.id}</strong>
@@ -1118,13 +1127,17 @@ function pagePatientView() {
                 <div class="info-key">${k}</div>
                 <div class="info-val">${v}</div>
               </div>`).join('')}
-            <div class="info-item" style="grid-column:1/-1">
-              <div class="info-key">Medical History</div>
-              <div class="info-val" style="white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : '—'}</div>
-            </div>
           </div>`, true)}
 
         ${panel('history', `
+          ${p.medicalHistory ? `
+          <div style="background:#FFFBEB;border:2px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="flex-shrink:0;display:flex;color:#D97706">${ic('alert-circle','icon-lg')}</span>
+              <span style="display:inline-flex;align-items:center;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 10px;border-radius:999px;background:#FEF3C7;color:#92400E">Medical History</span>
+            </div>
+            <div style="font-size:.85rem;color:#78350F;line-height:1.55;white-space:pre-wrap">${esc(p.medicalHistory)}</div>
+          </div>` : ''}
           <div class="patient-section-label muted">Optical Examination Records (${p.examinations.length})</div>
           ${examsContent}`)}
 
@@ -1754,7 +1767,15 @@ function pageAdminReports() {
   const monthStart = today.slice(0,8) + '01'
 
   window.state.afterRender = () => {
-    window.exportReportCSV = () => {
+    // Same real .xlsx approach as the Activity Log export (exportTableAsXlsx,
+    // main.js) — a plain CSV always landed in Excel with every column at
+    // the same cramped default width and no bold header. This reads
+    // whatever <table> is currently on screen (report columns vary by
+    // report type, so header/rows are just pulled from the live DOM
+    // instead of being hardcoded per type) and auto-sizes each column to
+    // its own longest cell, since there's no fixed column set to hand-pick
+    // widths for the way the Activity Log export could.
+    window.exportReportXlsx = () => {
       const table = document.querySelector('#rpt-table-area table')
       if (!table) {
         // A report can be "generated" and still have no <table> in the DOM
@@ -1769,19 +1790,29 @@ function pageAdminReports() {
           : 'Generate a report first, then export.', 'error')
         return
       }
-      const rows = Array.from(table.querySelectorAll('tr'))
-      const csv = rows.map(row =>
-        Array.from(row.querySelectorAll('th, td'))
-          .map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"')
-          .join(',')
-      ).join('\n')
-      const blob = new Blob([csv], { type: 'text/csv' })
+      const rows   = Array.from(table.querySelectorAll('tr')).map(row =>
+        Array.from(row.querySelectorAll('th, td')).map(cell => cell.textContent.trim())
+      )
+      const header = rows[0] || []
+      const body   = rows.slice(1)
+      if (!header.length) {
+        window.toast('This report has no records to export.', 'error')
+        return
+      }
+      const colWidths = header.map((h, i) => {
+        let maxLen = h.length
+        body.forEach(r => { const len = (r[i] || '').length; if (len > maxLen) maxLen = len })
+        return Math.min(45, Math.max(10, maxLen + 3))
+      })
+      const label = document.getElementById('rpt-type-text')?.textContent || 'Report'
+      const blob  = window.exportTableAsXlsx(label, header, body, colWidths)
       const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      const label = document.getElementById('rpt-type-text')?.textContent || 'report'
-      a.download = 'canaopticalclinic-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv'
+      const url = URL.createObjectURL(blob)
+      a.href = url
+      a.download = 'canaopticalclinic-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.xlsx'
       a.click()
-      window.toast('Report exported as CSV.', 'success')
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      window.toast('Report exported to Excel.', 'success')
     }
 
     // Builds the report's full printable HTML document + a filename
@@ -1796,7 +1827,7 @@ function pageAdminReports() {
     window._buildReportHtml = (action = 'print') => {
       const table = document.querySelector('#rpt-table-area table')
       if (!table) {
-        // Same distinction as exportReportCSV() above — a generated report
+        // Same distinction as exportReportXlsx() above — a generated report
         // with zero matching records renders no <table> either, and "generate
         // a report first" is actively wrong to tell someone who just did.
         const generated = document.getElementById('rpt-table-header')?.style.display === 'block'
@@ -2210,11 +2241,11 @@ function pageAdminSettings() {
               </div>
               <div class="form-group">
                 <label class="form-label">Phone Number</label>
-                <input class="form-input" id="ad-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${adm.contact || ''}">
+                <input class="form-input" id="ad-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${adm.contact || ''}">
               </div>
             </div>
             <div style="display:flex;justify-content:flex-end;margin-top:4px">
-              <button class="btn-primary" onclick="window.saveUserProfile()">
+              <button class="btn-primary" onclick="window.saveUserProfile(this)">
                 ${ic('check','icon-sm')} Save Changes
               </button>
             </div>
@@ -2281,7 +2312,7 @@ function pageAdminSettings() {
             </div>
             <div class="form-group">
               <label class="form-label">Contact Number</label>
-              <input class="form-input" id="ci-phone" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${clinicInfo.phone.replace(/"/g,'&quot;')}">
+              <input class="form-input" id="ci-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${clinicInfo.phone.replace(/"/g,'&quot;')}">
             </div>
           </div>
           <div class="form-group">
@@ -2452,23 +2483,24 @@ function pageAdminSettings() {
             <input class="form-input" id="svc-desc" placeholder="Brief description of the service">
           </div>
         </div>
-        <div class="form-row-3">
+        <div style="font-size:.72rem;color:#9CA3AF;margin-bottom:14px">
+          Bookable services appear as an appointment type on Book Appointment. Patient Visible also controls the public Services page: turn it off for an internal, staff-only type (like Follow-up Consultation), or turn Bookable off instead for a service you only want to list publicly, not offer online.
+        </div>
+        <div class="form-row-3" style="margin-bottom:16px;grid-template-columns:110px minmax(0,1.15fr) minmax(0,1fr)">
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Status</label>
             ${window.selectFieldHtml('svc-status', { value: 'active', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] })}
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Bookable</label>
-            ${window.selectFieldHtml('svc-bookable', { value: '1', options: [{ value: '1', label: 'Yes — offered as an appointment type' }, { value: '0', label: 'No — display only' }] })}
+            ${window.selectFieldHtml('svc-bookable', { value: '1', options: [{ value: '1', label: 'Yes, offered as an appointment type' }, { value: '0', label: 'No, display only' }] })}
           </div>
-          <div class="form-group" style="margin-bottom:0" id="svc-patient-visible-wrap">
+          <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Patient Visible</label>
-            ${window.selectFieldHtml('svc-patient-visible', { value: '1', options: [{ value: '1', label: 'Yes — shown to patients too' }, { value: '0', label: 'No — staff/admin only' }] })}
+            ${window.selectFieldHtml('svc-patient-visible', { value: '1', options: [{ value: '1', label: 'Yes, shown to patients too' }, { value: '0', label: 'No, staff/admin only' }] })}
           </div>
         </div>
-        <div style="font-size:.72rem;color:#9CA3AF;margin-top:8px">
-          Bookable services appear as an appointment type on Book Appointment. Patient Visible controls the public Services page too — turn it off for an internal, staff-only type (like Follow-up Consultation); turn Bookable off instead for a service you only want to list publicly, not offer online.
-        </div>
+        ${window.svcIconPickerHtml('svc-icon', 'eye')}
         <div style="display:flex;justify-content:flex-end;margin-top:16px">
           <button class="btn-primary" onclick="window.addService()">
             ${ic('plus','icon-sm')} Add Service
@@ -2849,7 +2881,7 @@ function pageActivityLog() {
       <h1 class="page-title">Activity Log</h1>
       <p class="page-subtitle">System-wide audit trail of all actions</p>
     </div>
-    <button class="btn-secondary" onclick="window.exportLog()">${ic('download','icon-sm')} Export Log</button>
+    <button class="btn-secondary" onclick="window.exportLog()">${ic('download','icon-sm')} Export to Excel</button>
   </div>
   <div class="page-body">
     <div class="table-wrap">
@@ -2932,11 +2964,13 @@ function pageActivityLog() {
               data-type="${l.type}"
               data-ts="${l.timestamp}"
               data-sort-user="${l.user.toLowerCase()}"
-              data-sort-ts="${l.timestamp}">
+              data-sort-ts="${l.timestamp}"
+              style="cursor:pointer" title="Click to view full details"
+              onclick="window.viewActivityLogDetail('${l.id}')">
               <td data-label="#" style="color:#9CA3AF;font-size:.75rem">${i+1}</td>
               <td data-label="User"><div class="patient-name-cell">${avatar(l.user, 'patient-avatar', l.photoUrl || userPhotoMap[l.user] || null)}<strong style="font-size:.82rem">${l.user}</strong></div></td>
               <td data-label="Role">${badge(l.role.toLowerCase())}</td>
-              <td data-label="Action" style="font-size:.82rem;max-width:380px">${l.action}</td>
+              <td data-label="Action" style="font-size:.82rem;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.action)}</td>
               <td data-label="Timestamp" style="font-size:.75rem;color:#9CA3AF;white-space:nowrap">${fmtTimestamp12h(l.timestamp)}</td>
               <td data-label="Type">${logTypeBadge(l.type)}</td>
               <td data-label="IP Address" style="font-size:.75rem;color:#9CA3AF;font-family:monospace;white-space:nowrap">${l.ip || '—'}</td>
@@ -3456,7 +3490,7 @@ function pageDoctorSettings() {
             </div>
             <div class="form-group">
               <label class="form-label">Phone Number</label>
-              <input class="form-input" id="doc-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${doc.contact || ''}">
+              <input class="form-input" id="doc-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${doc.contact || ''}">
             </div>
           </div>
           <div class="form-row-2">
@@ -3478,7 +3512,7 @@ function pageDoctorSettings() {
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;margin-top:4px">
-            <button class="btn-primary" onclick="window.saveUserProfile()">
+            <button class="btn-primary" onclick="window.saveUserProfile(this)">
               ${ic('check','icon-sm')} Save Changes
             </button>
           </div>
@@ -4019,7 +4053,7 @@ function pageNewExamination() {
       </div>
       <div class="form-group" style="margin:0">
         ${fl('Contact Number')}
-        <input id="ne-contact" class="form-input" style="${inp}" inputmode="numeric" oninput="this.value=this.value.replace(/\\D/g,'')" value="${p.contact || ''}" placeholder="09XX XXX XXXX">
+        <input id="ne-contact" class="form-input" style="${inp}" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${p.contact || ''}" placeholder="0921-245-2834">
       </div>
     </div>
     <div class="form-group" style="margin-bottom:16px">
@@ -4030,13 +4064,15 @@ function pageNewExamination() {
          record (medical history lives on the patient's profile, edited via
          Add/Edit Patient or the patient's own Settings), just surfaced here
          so it's in view while examining regardless of what this particular
-         visit's service type is. -->
-    <div style="background:#eff6ff;border-left:3px solid #3b82f6;border-radius:8px;padding:12px 16px;display:flex;align-items:flex-start;gap:10px">
-      <span style="flex-shrink:0;display:flex;margin-top:2px;color:#3b82f6">${ic('clipboard','icon-sm')}</span>
-      <div style="min-width:0">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#1e40af;margin-bottom:4px">Medical History</div>
-        <div style="font-size:.82rem;color:#1e3a5f;line-height:1.5;white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : 'No medical history on file.'}</div>
+         visit's service type is. Amber/prominent only when there's actually
+         something on file worth not missing — an empty one stays low-key
+         so a patient with nothing recorded doesn't read as an alarm. -->
+    <div style="background:${p.medicalHistory ? '#FFFBEB' : '#F9FAFB'};border:2px solid ${p.medicalHistory ? '#FDE68A' : '#E5E7EB'};border-radius:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="flex-shrink:0;display:flex;color:${p.medicalHistory ? '#D97706' : '#9CA3AF'}">${ic('alert-circle','icon-lg')}</span>
+        <span style="display:inline-flex;align-items:center;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 10px;border-radius:999px;background:${p.medicalHistory ? '#FEF3C7' : '#F3F4F6'};color:${p.medicalHistory ? '#92400E' : '#6B7280'}">Medical History</span>
       </div>
+      <div style="font-size:.85rem;color:${p.medicalHistory ? '#78350F' : '#9CA3AF'};line-height:1.55;white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : 'No medical history on file.'}</div>
     </div>
   </div>`
 
@@ -5841,11 +5877,11 @@ function pageStaffSettings() {
             </div>
             <div class="form-group">
               <label class="form-label">Phone Number</label>
-              <input class="form-input" id="st-phone" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${staffMember.contact || ''}">
+              <input class="form-input" id="st-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${staffMember.contact || ''}">
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;margin-top:4px">
-            <button class="btn-primary" onclick="window.saveUserProfile()">
+            <button class="btn-primary" onclick="window.saveUserProfile(this)">
               ${ic('check','icon-sm')} Save Changes
             </button>
           </div>
@@ -6319,7 +6355,7 @@ function pagePatientSettings() {
           </div>
           <div class="form-group">
             <label class="form-label">Contact Number</label>
-            <input type="text" class="form-input" id="sett-contact" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\\D/g,'')" value="${patient?.contact || ''}">
+            <input type="text" class="form-input" id="sett-contact" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${patient?.contact || ''}">
           </div>
           <div class="form-group">
             <label class="form-label">Complete Address</label>
@@ -6358,7 +6394,7 @@ function pagePatientSettings() {
             <span style="flex-shrink:0;display:flex">${ic('info','icon-sm')}</span> Age is calculated automatically from your date of birth.
           </div>
           <div style="display:flex;justify-content:flex-end">
-            <button class="btn-primary" onclick="window.savePatientSettings()">
+            <button class="btn-primary" onclick="window.savePatientSettings(this)">
               ${ic('check','icon-sm')} Save Changes
             </button>
           </div>

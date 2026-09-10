@@ -31,7 +31,7 @@ try {
     $pdo = getDB();
 
     $s = $pdo->prepare(
-        'SELECT p.first_name, p.registered_date, u.password_hash
+        'SELECT p.first_name, p.registered_date, u.password_hash, u.password_changed_by
            FROM patients p
            JOIN users u ON u.id = p.user_id
           WHERE p.id = ? LIMIT 1'
@@ -48,7 +48,16 @@ try {
     $isTemp = password_verify($tempPw, $row['password_hash']);
 
     $resp = ['success' => true, 'isTemp' => $isTemp];
-    if ($isTemp) $resp['tempPassword'] = $tempPw;
+    if ($isTemp) {
+        $resp['tempPassword'] = $tempPw;
+    } else {
+        // Who actually changed it — set by change_password.php (self) or
+        // reset_password.php (admin/staff resetting someone else). NULL on
+        // an account whose password moved off the temp one before this
+        // column existed; the frontend shows a neutral label rather than
+        // guessing "patient" for those.
+        $resp['changedBy'] = $row['password_changed_by'];
+    }
 
     jsonResponse($resp);
 

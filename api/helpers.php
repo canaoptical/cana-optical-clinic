@@ -141,7 +141,11 @@ function validatePasswordPolicy(string $password): ?string {
 // optional wherever they already were; this only rejects a BAD value,
 // never a missing one.
 function isValidContact(string $contact): bool {
-    return (bool)preg_match('/^\d{11}$/', trim($contact));
+    // Hyphens stripped first — the Edit User field (User Management)
+    // allows them (e.g. "0921-245-2834"), and some existing stored numbers
+    // predate that field's own digit-only stripping. Either format
+    // validates the same way once hyphens are out of the count.
+    return (bool)preg_match('/^\d{11}$/', str_replace('-', '', trim($contact)));
 }
 
 // No geocoding involved (that's the only way to truly verify an address

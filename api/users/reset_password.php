@@ -64,8 +64,12 @@ try {
     if ($curHash) recordPasswordHistory($pdo, $targetUserId, $curHash);
 
     $hash = password_hash($newPass, PASSWORD_DEFAULT);
-    $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-        ->execute([$hash, $targetUserId]);
+    // Record the ACTOR's role (admin/staff doing the reset), not the
+    // target account's own role — see get_temp_password.php / the Edit
+    // Patient "Temporary Password" check, which reads this back to show
+    // who actually changed it.
+    $pdo->prepare('UPDATE users SET password_hash = ?, password_changed_by = ? WHERE id = ?')
+        ->execute([$hash, $_SESSION['role'], $targetUserId]);
 
     // Admin resetting someone else's password — revoke every session on
     // the TARGET account, no exceptions. The admin isn't the account

@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id`            INT UNSIGNED     NOT NULL AUTO_INCREMENT,
   `email`         VARCHAR(255)     NOT NULL,
   `password_hash` VARCHAR(255)     NOT NULL,
+  -- Role of whoever last actually changed this account's password (not
+  -- necessarily this row's own `role` — an admin/staff resetting a
+  -- PATIENT's password records 'admin'/'staff' here, not 'patient'). NULL
+  -- until the password has ever been changed away from its initial value.
+  -- Lets the "Temporary Password" check in Edit Patient say who changed it
+  -- instead of assuming it was always the patient.
+  `password_changed_by` ENUM('admin','staff','doctor','patient') NULL DEFAULT NULL,
   `role`          ENUM('admin','staff','doctor','patient') NOT NULL,
   `is_active`     TINYINT(1)       NOT NULL DEFAULT 1,
   `last_login_at` DATETIME         NULL     DEFAULT NULL,
@@ -693,13 +700,13 @@ CREATE TABLE IF NOT EXISTS `about_gallery` (
 --    ALTER TABLE `patients` DROP COLUMN `optical_history`;
 --    Consultation/Examination/Prescription field-separation fix — the
 --    `consultations`/`examinations`/`prescriptions` CREATE TABLE blocks
---    above are already the target shape for a fresh install; an existing
---    live database needs database/migrate_exam_prescription_split.sql
---    run once (it also carries forward each exam's existing lens/
---    material/coating/frame data onto a matching prescription row before
---    dropping the columns that used to hold it — don't skip straight to
---    the DROP COLUMN statements inside that file without the copy steps
---    ahead of them).
+--    above are already the target shape for a fresh install. Existing live
+--    databases were brought in line via database/migrate_exam_prescription_
+--    split.sql (carried forward each exam's existing lens/material/coating/
+--    frame data onto a matching prescription row before dropping the
+--    columns that used to hold it) — confirmed applied everywhere this app
+--    runs, so that one-time file has been deleted; this note stays only as
+--    a record that the migration happened.
 --    Prescription dispensing fields — the wizard's Dispensing step (Total
 --    Amount/Dispensed Date/Received By) was captured in the DOM but never
 --    actually saved anywhere; now persisted on `prescriptions`. Existing
@@ -829,5 +836,14 @@ CREATE TABLE IF NOT EXISTS `about_gallery` (
 --    and surfaced read-only to the doctor in the exam wizard's Patient
 --    Info step. Existing database:
 --    ALTER TABLE `patients` ADD COLUMN `medical_history` TEXT NULL DEFAULT NULL AFTER `occupation`;
+--    Edit Patient's "Temporary Password" check used to hardcode "Changed by
+--    patient" for any non-temp password, even when it was actually an
+--    admin/staff reset via that same modal's Reset Password section. A new
+--    column records who ACTUALLY last changed it (set by both
+--    change_password.php, self-service, and reset_password.php, admin/staff
+--    resetting someone else), and get_temp_password.php now returns it so
+--    the frontend can attribute it correctly instead of guessing. Existing
+--    database:
+--    ALTER TABLE `users` ADD COLUMN `password_changed_by` ENUM('admin','staff','doctor','patient') NULL DEFAULT NULL AFTER `password_hash`;
 
 SET FOREIGN_KEY_CHECKS = 1;

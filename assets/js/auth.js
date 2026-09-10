@@ -49,13 +49,31 @@ window.updatePwChecklist = updatePwChecklist
 
 // ── Contact number / address validity (shared by every screen that
 //    collects a person's contact number or address) ────────────────
-// Every contact-number input already strips non-digits as the user types
-// (oninput="this.value=this.value.replace(/\D/g,'')"), so by the time this
-// runs the value is digit-only — this just checks it's the right LENGTH
-// for a PH mobile number (e.g. 09171234567).
+// Every person-contact-number field across the app shares formatContactInput()
+// (below) on its oninput, so typing digits auto-formats to the same
+// "0921-245-2834" pattern everywhere instead of leaving hyphen placement up
+// to whoever's typing — plus legacy stored numbers entered before that
+// existed. Hyphens are stripped here before checking length so any of that
+// still validates the same way — this just checks there are 11 actual
+// digits for a PH mobile number, not that the string looks a particular way.
 function isValidContact(contact) {
-  return /^\d{11}$/.test((contact || '').trim())
+  return /^\d{11}$/.test((contact || '').trim().replace(/-/g, ''))
 }
+
+// Auto-formats a contact-number input to the "0921-245-2834" pattern (4-3-4
+// digit grouping) as the user types, capped at 11 digits — every contact
+// field across the app shares this on its oninput (patient/doctor/staff/
+// admin self- or other-editing, and the clinic's own number in Settings >
+// Clinic Information) so the format is identical everywhere instead of
+// depending on what each person happens to type.
+function formatContactInput(el) {
+  const digits = (el.value || '').replace(/\D/g, '').slice(0, 11)
+  let out = digits
+  if (digits.length > 7) out = `${digits.slice(0,4)}-${digits.slice(4,7)}-${digits.slice(7)}`
+  else if (digits.length > 4) out = `${digits.slice(0,4)}-${digits.slice(4)}`
+  el.value = out
+}
+window.formatContactInput = formatContactInput
 window.isValidContact = isValidContact
 
 // No geocoding involved (that's the only way to truly verify an address
@@ -1830,8 +1848,12 @@ function fpTogglePw(inputId, iconId) {
   const input = document.getElementById(inputId)
   const icon  = document.getElementById(iconId)
   // FB-style: full eye + diagonal slash = hidden (default), plain open eye = revealed after click.
-  if (input.type === 'password') { input.type = 'text'; icon.innerHTML = EYE_OPEN }
-  else { input.type = 'password'; icon.innerHTML = EYE_CLOSED }
+  // Same active-orange convention as togglePwVisibility()/toggleLoginPw()
+  // (main.js) — stays colored the whole time the password is visible, not
+  // just on hover.
+  const btn = icon.closest('.fp-pw-eye')
+  if (input.type === 'password') { input.type = 'text'; icon.innerHTML = EYE_OPEN;   if (btn) btn.style.color = '#E8760A' }
+  else                            { input.type = 'password'; icon.innerHTML = EYE_CLOSED; if (btn) btn.style.color = '' }
 }
 
 // ── Private helpers ───────────────────────────────────────────────

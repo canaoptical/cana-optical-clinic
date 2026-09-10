@@ -43,8 +43,13 @@ try {
     }
 
     recordPasswordHistory($pdo, $userId, $user['password_hash']);
-    $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-        ->execute([password_hash($newPw, PASSWORD_DEFAULT), $userId]);
+    // Self-service change — the changer IS the account owner, so record
+    // this account's own role. See get_temp_password.php / the Edit
+    // Patient "Temporary Password" check, which reads this back to show
+    // who actually changed it instead of assuming it was always the
+    // patient.
+    $pdo->prepare('UPDATE users SET password_hash = ?, password_changed_by = ? WHERE id = ?')
+        ->execute([password_hash($newPw, PASSWORD_DEFAULT), $_SESSION['role'], $userId]);
 
     // Self-service change — revoke every OTHER session on the account,
     // but keep the device making this change signed in, same as

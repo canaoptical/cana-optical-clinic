@@ -837,6 +837,52 @@ function selectFieldHtml(id, opts = {}) {
 }
 window.selectFieldHtml = selectFieldHtml
 
+// Curated subset of the shared icon() library (main.js) — clinic/service-
+// relevant icons only, not every UI-chrome glyph (chevrons, x, trash, etc.)
+// the full library also has. Used by both the Add New Service form
+// (pages.js) and the Edit Service modal (below) so a service's icon is
+// actually choosable instead of always defaulting to 'eye' on create and
+// staying frozen forever after (api/services/update.php already accepts
+// an `icon` field — nothing was ever sending one).
+const SVC_ICON_CHOICES = [
+  'eye', 'activity', 'search', 'alert-circle', 'file-text', 'award', 'archive',
+  'refresh-cw', 'clipboard', 'camera', 'package', 'settings', 'shield',
+  'check-circle', 'monitor', 'calendar', 'clock', 'phone', 'mail', 'map-pin', 'user',
+]
+
+function svcIconPickerHtml(hiddenId, current) {
+  const sel = current || 'eye'
+  return `
+  <div class="form-group" style="margin-bottom:0">
+    <label class="form-label">Icon</label>
+    <input type="hidden" id="${hiddenId}" value="${esc(sel)}">
+    <div id="${hiddenId}-grid" style="display:flex;flex-wrap:wrap;gap:6px">
+      ${SVC_ICON_CHOICES.map(name => `
+      <button type="button" title="${esc(name)}" onclick="window.svcSelectIcon('${hiddenId}','${name}',this)"
+              style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+                     border:1.5px solid ${name === sel ? '#E8760A' : '#E5E7EB'};background:${name === sel ? '#FFF7ED' : '#fff'};
+                     color:${name === sel ? '#E8760A' : '#6B7280'};transition:border-color .12s,background .12s,color .12s">
+        ${icon(name, 'icon-sm')}
+      </button>`).join('')}
+    </div>
+  </div>`
+}
+window.svcIconPickerHtml = svcIconPickerHtml
+
+function svcSelectIcon(hiddenId, name, btnEl) {
+  const hidden = document.getElementById(hiddenId)
+  if (hidden) hidden.value = name
+  const grid = document.getElementById(hiddenId + '-grid')
+  if (!grid) return
+  grid.querySelectorAll('button').forEach(b => {
+    const isSel = b === btnEl
+    b.style.borderColor = isSel ? '#E8760A' : '#E5E7EB'
+    b.style.background  = isSel ? '#FFF7ED' : '#fff'
+    b.style.color       = isSel ? '#E8760A' : '#6B7280'
+  })
+}
+window.svcSelectIcon = svcSelectIcon
+
 // Time-of-day fields (Consultation Settings' clinic hours, break times,
 // reminder/deadline times) are just a custom select whose options happen
 // to be "h:mm AM/PM" strings — thin wrapper kept so existing call sites
@@ -2268,6 +2314,9 @@ async function cancelAppt(id, reason) {
   updateAppointmentStatus(id, 'cancelled')
   const a = appointments.find(a => a.id === id)
   if (a && reason) a.cancellationReason = reason
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Cancelled appointment ${id} for ${a?.patientName || 'a patient'}${reason ? `: reason given '${reason}'` : ''}`,
+    timestamp: nowTimestamp(), type:'appointment' })
   toast('Appointment has been cancelled. The patient will be notified of the cancellation.', 'error')
   renderPage()
   return true
@@ -2279,6 +2328,9 @@ async function disapproveAppt(id, reason) {
   updateAppointmentStatus(id, 'disapproved')
   const a = appointments.find(a => a.id === id)
   if (a && reason) a.disapprovalReason = reason
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Disapproved appointment ${id} for ${a?.patientName || 'a patient'}${reason ? `: reason given '${reason}'` : ''}`,
+    timestamp: nowTimestamp(), type:'appointment' })
   toast('Appointment request declined. The patient will be notified and may submit a new request.')
   renderPage()
   return true
@@ -2576,11 +2628,18 @@ async function doReschedule(id, fulfillRequest = false) {
     _btnIdle(btn)
     return
   }
+  const diffParts = _logDiffParts([
+    ['date', a.date, date],
+    ['time', a.time, time],
+  ])
   a.date = date
   a.time = time
   if (note) a.rescheduleNote = note
   a.rescheduledAt = new Date().toISOString()
   if (a.rescheduleRequest) delete a.rescheduleRequest
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Rescheduled appointment ${id} for ${a.patientName}${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+    timestamp: nowTimestamp(), type:'appointment' })
   closeModal()
   toast('Appointment rescheduled.')
   renderPage()
@@ -3153,6 +3212,9 @@ async function doRequestReschedule(id) {
   const ok = await _apptUpdate({ id, action: 'request_reschedule', reason, preferredDate, preferredTime })
   if (!ok) { _btnIdle(btn); return }
   a.rescheduleRequest = { reason, preferredDate, preferredTime, requestedAt: nowTimestamp().slice(0,16) }
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Requested reschedule for appointment ${id}: preferred ${preferredDate} at ${preferredTime}, reason '${reason}'`,
+    timestamp: nowTimestamp(), type:'appointment' })
   closeModal()
   toast('Reschedule request submitted. The clinic will review and contact you.')
   renderPage()
@@ -3163,6 +3225,9 @@ async function dismissRescheduleRequest(id) {
   if (!ok) return
   const a = appointments.find(a => a.id === id)
   if (a) delete a.rescheduleRequest
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Dismissed reschedule request for appointment ${id}${a ? ' (' + a.patientName + ')' : ''}`,
+    timestamp: nowTimestamp(), type:'appointment' })
   closeModal()
   toast('Reschedule request dismissed.')
   renderPage()
@@ -3602,6 +3667,14 @@ async function validateSettingsPassword(newId, confId, errId, curId) {
   // button is disabled until met — this is just a safety net.
   if (!curPw || !newPw || !window.pwPolicyValid(newPw)) return
 
+  // Button id follows the same "<prefix>-pw-btn" convention as
+  // updateSettingsPwGate() above (newId is always "<prefix>-newpw") —
+  // disables + spins it immediately so a fast double-click/double-tap
+  // can't fire two change-password requests before the first lands.
+  const prefix = newId.replace(/-newpw$/, '')
+  const btn    = document.getElementById(prefix + '-pw-btn')
+  if (_btnBusy(btn, 'primary', 'Updating…')) return
+
   try {
     const r = await fetch('api/users/change_password.php', {
       method:  'POST',
@@ -3610,19 +3683,73 @@ async function validateSettingsPassword(newId, confId, errId, curId) {
     })
     const d = await r.json()
     if (d.success) {
-      toast('Password updated successfully.', 'success')
+      addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A user', role: state.role,
+        action: 'Changed account password', timestamp: nowTimestamp(), type: state.role === 'patient' ? 'patient' : 'user' })
       ;[curPwId, newId, confId].forEach(id => { const el = document.getElementById(id); if (el) el.value = '' })
+      // Restore the button's idle label, then re-run the gate so it goes
+      // back to its disabled/dimmed look now that the fields are empty
+      // again, instead of sitting there enabled with nothing to submit.
+      _btnIdle(btn)
+      if (window.updateSettingsPwGate) window.updateSettingsPwGate(prefix)
+      _promptStaySignedInAfterPasswordChange()
     } else {
+      _btnIdle(btn)
       toast(d.message || 'Failed to update password.', 'error')
     }
   } catch (_) {
+    _btnIdle(btn)
     toast('Network error — please try again.', 'error')
   }
 }
 window.validateSettingsPassword = validateSettingsPassword
 
+// Shown right after a self-service password change succeeds, on every
+// role's Settings page (admin/doctor/staff/patient all funnel through
+// validateSettingsPassword() above, so this one prompt covers all of them
+// the same way). The backend already revokes every OTHER session on the
+// account on a password change (same convention as Facebook/Google) but
+// keeps this device signed in by default — this just gives the person a
+// chance to log out here too, instead of finding out only from a modal
+// telling them they're signed in with a password they just replaced.
+//
+// Built as its own centered overlay (same self-contained technique as
+// showConfirm() above) rather than routed through the generic showModal()
+// header/body/footer chrome, so the confirmation icon, title and message
+// can all be centered with a bit more weight than a standard form modal —
+// this is a "you're done, one more choice" moment, not a form.
+function _promptStaySignedInAfterPasswordChange() {
+  if (!document.getElementById('_pwchg-styles')) {
+    const s = document.createElement('style')
+    s.id = '_pwchg-styles'
+    s.textContent = '@keyframes _pwchgFade{from{opacity:0}to{opacity:1}}@keyframes _pwchgSlide{from{transform:translateY(18px) scale(.97);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}@keyframes _pwchgPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}'
+    document.head.appendChild(s)
+  }
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);animation:_pwchgFade .15s'
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:32px 28px 26px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.18),0 4px 16px rgba(0,0,0,.1);animation:_pwchgSlide .2s cubic-bezier(.34,1.56,.64,1);text-align:center">
+      <div style="width:60px;height:60px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;color:#16A34A;margin:0 auto 16px;animation:_pwchgPop .35s cubic-bezier(.34,1.56,.64,1) .05s both">
+        ${icon('check-circle','icon-lg')}
+      </div>
+      <div style="font-weight:700;font-size:1.05rem;color:#111827;margin-bottom:8px">Password Changed</div>
+      <div style="font-size:.85rem;color:#6B7280;line-height:1.6;margin-bottom:24px">
+        Your password has been updated. Every other device signed in to this account has been signed out for security. This device stays signed in unless you choose to log out now.
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="_pwchg-logout" class="btn-disapprove">Log Out</button>
+        <button id="_pwchg-stay" class="btn-primary">Stay Signed In</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  const close = () => { overlay.style.opacity = '0'; overlay.style.transition = 'opacity .15s'; setTimeout(() => overlay.remove(), 150) }
+  overlay.querySelector('#_pwchg-stay').onclick   = () => close()
+  overlay.querySelector('#_pwchg-logout').onclick = () => { close(); window.logout() }
+  overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+}
+window._promptStaySignedInAfterPasswordChange = _promptStaySignedInAfterPasswordChange
+
 // Save profile for admin / staff / doctor (role-aware)
-async function saveUserProfile() {
+async function saveUserProfile(btn) {
   const role   = state.role
   const prefix = role === 'doctor' ? 'doc' : role === 'staff' ? 'st' : 'ad'
   const fn     = document.getElementById(`${prefix}-fname`)?.value.trim() || ''
@@ -3632,6 +3759,11 @@ async function saveUserProfile() {
   const phone  = document.getElementById(`${prefix}-phone`)?.value.trim() || ''
   if (!fn || !ln) { toast('First and last name are required.', 'error'); return }
   if (phone && !window.isValidContact(phone)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
+  // Disables + spins the button for the duration of the request so a fast
+  // double-click/double-tap can't fire this twice before the first request
+  // even lands — _btnBusy() bails out (returns true) if it's already in
+  // flight, same guard convention used app-wide (doApproveAppt etc).
+  if (_btnBusy(btn, 'primary', 'Saving…')) return
 
   try {
     const r = await fetch('api/users/update_profile.php', {
@@ -3644,6 +3776,13 @@ async function saveUserProfile() {
       toast('Profile updated successfully.', 'success')
 
       const fullName = fmtFullName(fn, mn, ln, role === 'doctor' ? 'Dr. ' : '')
+      // Snapshot before overwriting state.user below, so the log line can
+      // show exactly what changed (old -> new), not just which fields did.
+      const diffParts = _logDiffParts([
+        ['name', state.user?.name, fullName],
+        ['email', state.user?.email, email || state.user?.email],
+        ['contact', state.user?.contact, phone],
+      ])
 
       // Update state.user
       if (state.user) {
@@ -3654,6 +3793,10 @@ async function saveUserProfile() {
         if (email) state.user.email = email
         state.user.contact   = phone
       }
+
+      addActivityLog({ id:'L'+Date.now(), user: fullName, role: state.role,
+        action: diffParts.length ? `Updated own profile: ${diffParts.join('; ')}` : 'Updated own profile',
+        timestamp: nowTimestamp(), type:'user' })
 
       // Sync the in-memory mock arrays so navigating away and back shows new values
       if (role === 'doctor') {
@@ -3668,12 +3811,16 @@ async function saveUserProfile() {
       }
 
       // Re-render the current page so the profile banner reflects new values,
-      // and re-render the sidebar so the name updates there too
+      // and re-render the sidebar so the name updates there too — this also
+      // rebuilds the Save Changes button fresh (idle, enabled), so there's
+      // nothing to manually restore here on the success path.
       window.navigate(state.page, { ...state.params })
     } else {
+      _btnIdle(btn)
       toast(d.message || 'Failed to update profile.', 'error')
     }
   } catch (_) {
+    _btnIdle(btn)
     toast('Network error — please try again.', 'error')
   }
 }
@@ -3692,7 +3839,7 @@ function _syncSettAge() {
 }
 window._syncSettAge = _syncSettAge
 
-async function savePatientSettings() {
+async function savePatientSettings(btn) {
   const fn      = document.getElementById('sett-first')?.value.trim()   || ''
   const mn      = document.getElementById('sett-middle')?.value.trim() || ''
   const ln      = document.getElementById('sett-last')?.value.trim()    || ''
@@ -3705,6 +3852,8 @@ async function savePatientSettings() {
   if (!fn || !ln) { toast('First and last name are required.', 'error'); return }
   if (contact && !window.isValidContact(contact)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
   if (address && !window.looksLikeAddress(address)) { toast('Please enter a complete address.', 'error'); return }
+  // Same double-submit guard as saveUserProfile() above.
+  if (_btnBusy(btn, 'primary', 'Saving…')) return
 
   try {
     const r = await fetch('api/patients/update.php', {
@@ -3716,6 +3865,27 @@ async function savePatientSettings() {
     if (d.success) {
       toast('Profile updated successfully.', 'success')
       const fullName = fmtFullName(fn, mn, ln)
+      // Keep the in-memory patients array in sync too — pagePatientSettings
+      // reads from it first and falls back to state.user, so a stale entry
+      // here would silently override the just-saved values on re-render.
+      const p = patients.find(pt => pt.id === state.user?.id)
+      // Snapshotted before overwriting p.*/state.user below, so the log
+      // line can show exactly what changed (old -> new). Long free-text
+      // fields (address, occupation, medical history) stay out of this and
+      // just get named as "updated" — see _logDiffParts()'s own comment.
+      const diffParts = _logDiffParts([
+        ['name', p?.name, fullName],
+        ['contact', p?.contact, contact],
+        ['gender', p?.gender, gender || p?.gender],
+        ['date of birth', p?.dob, dob || p?.dob],
+      ])
+      const otherChanged = [
+        address && address !== p?.address,
+        occupation !== (p?.occupation || ''),
+        medicalHistory !== (p?.medicalHistory || ''),
+      ].some(Boolean)
+      if (otherChanged) diffParts.push('other profile details updated')
+
       if (state.user) {
         state.user.firstName  = fn
         state.user.middleName = mn
@@ -3724,10 +3894,6 @@ async function savePatientSettings() {
         if (contact) state.user.contact = contact
         if (address) state.user.address = address
       }
-      // Keep the in-memory patients array in sync too — pagePatientSettings
-      // reads from it first and falls back to state.user, so a stale entry
-      // here would silently override the just-saved values on re-render.
-      const p = patients.find(pt => pt.id === state.user?.id)
       if (p) {
         p.firstName  = fn
         p.middleName = mn
@@ -3740,11 +3906,21 @@ async function savePatientSettings() {
         if (gender) p.gender = gender
         if (dob) { p.dob = dob; p.age = ageFromDob(dob) }
       }
+      // Email isn't editable from this form (see api/patients/update.php's
+      // own comment — it goes through the separate OTP-verified email-
+      // change flow instead), so it never shows up in this diff.
+      addActivityLog({ id:'L'+Date.now(), user: fullName, role: 'Patient',
+        action: diffParts.length ? `Updated own profile: ${diffParts.join('; ')}` : 'Updated own profile',
+        timestamp: nowTimestamp(), type:'patient' })
+      // Re-renders the page, which rebuilds Save Changes fresh (idle,
+      // enabled) — nothing to manually restore here on the success path.
       window.navigate(state.page, { ...state.params })
     } else {
+      _btnIdle(btn)
       toast(d.message || 'Failed to update profile.', 'error')
     }
   } catch (_) {
+    _btnIdle(btn)
     toast('Network error — please try again.', 'error')
   }
 }
@@ -3995,9 +4171,13 @@ async function _verifyEmailChangeOtp() {
       return
     }
     // Sync the new email everywhere it's cached client-side.
+    const oldEmail = state.user?.email
     if (state.user) state.user.email = d.email
     const p = patients.find(pt => pt.id === state.user?.id)
     if (p) p.email = d.email
+    addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A patient', role: 'Patient',
+      action: `Changed email from '${oldEmail || '(none)'}' to '${d.email || '(none)'}'`,
+      timestamp: nowTimestamp(), type:'patient' })
     clearInterval(window._chgEmailCooldownInterval)
     closeModal()
     toast('Email address updated successfully.', 'success')
@@ -4128,6 +4308,7 @@ window.confirmRemoveWaitlistEntry = confirmRemoveWaitlistEntry
 async function doRemoveWaitlistEntry(id) {
   const btn = document.getElementById('waitlist-remove-confirm-btn')
   if (_btnBusy(btn, 'danger', 'Removing…')) return
+  const e = waitlistEntries.find(e => e.id === id)
   try {
     const r = await fetch('api/waitlist/leave.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4135,6 +4316,9 @@ async function doRemoveWaitlistEntry(id) {
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not remove from waitlist.', 'error'); _btnIdle(btn); return }
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Removed ${e?.patientName || 'a patient'} from waitlist for ${e?.doctorName || 'a doctor'}${e ? ' on ' + e.date + ' at ' + e.time : ''}`,
+      timestamp: nowTimestamp(), type:'appointment' })
     closeModal()
     toast('Removed from waitlist.', 'success')
     _syncWaitlist()
@@ -6124,6 +6308,9 @@ async function joinWaitlist(doctorId, doctorName, date, time, type, patientId, p
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not join the waitlist.', 'error'); return }
+    addActivityLog({ id:'L'+Date.now(), user: isStaff ? state.user.name : (state.user?.name || patientName), role: isStaff ? state.role : 'Patient',
+      action: isStaff ? `Added ${patientName} to waitlist for ${doctorName} on ${date} at ${time}` : `Joined waitlist for ${doctorName} on ${date} at ${time}`,
+      timestamp: nowTimestamp(), type:'appointment' })
     closeModal()
     if (isStaff) {
       toast(`${patientName} has been added to the waitlist.`, 'success')
@@ -6240,6 +6427,9 @@ async function _confirmAssignDoctor(apptId, doctorId) {
     if (!d.success) { toast(d.message || 'Could not assign a doctor.', 'error'); return }
     const a = appointments.find(x => x.id === apptId)
     if (a) { a.doctorId = doctorId; a.doctorName = d.doctorName }
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Assigned ${d.doctorName} to appointment ${apptId}${a ? ' for ' + a.patientName : ''}`,
+      timestamp: nowTimestamp(), type:'appointment' })
     closeModal()
     toast('Doctor assigned.', 'success')
     renderPage()
@@ -6257,6 +6447,9 @@ async function respondWaitlist(id, action) {
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not process your response.', 'error'); return }
+    addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A patient', role: 'Patient',
+      action: action === 'claim' ? `Claimed offered waitlist slot ${id}` : `Declined offered waitlist slot ${id}`,
+      timestamp: nowTimestamp(), type:'appointment' })
     if (action === 'claim') {
       toast('Appointment confirmed!', 'success')
       window.navigate('patient-appts', { filter: 'approved' })
@@ -6292,6 +6485,9 @@ async function leaveWaitlist(id) {
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not leave the waitlist.', 'error'); return }
+    addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A patient', role: 'Patient',
+      action: `Left waitlist entry ${id}`,
+      timestamp: nowTimestamp(), type:'appointment' })
     toast("You've left the waitlist.", 'info')
     window.navigate('patient-request-appt')
   } catch (_) {
@@ -6405,7 +6601,7 @@ function openAddUserModal() {
         <div class="form-group"><label class="form-label">Email <span class="req">*</span></label>
           <input id="nu-email" type="email" class="form-input" placeholder="juan@email.com"></div>
         <div class="form-group"><label class="form-label">Contact Number</label>
-          <input id="nu-contact" class="form-input" inputmode="numeric" maxlength="11" onkeypress="return /[0-9]/.test(event.key)" oninput="this.value=this.value.replace(/\D/g,'')" placeholder="09XXXXXXXXX"></div>
+          <input id="nu-contact" class="form-input" inputmode="numeric" maxlength="13" onkeypress="return /[0-9]/.test(event.key)" oninput="window.formatContactInput(this)" placeholder="0921-245-2834"></div>
       </div>
       <div class="form-group"><label class="form-label">Role <span class="req">*</span></label>
         ${window.selectFieldHtml('nu-role', { value: 'Admin', options: ['Admin','Staff','Doctor','Patient'], onchange: 'window.onAddUserRoleChange(this.value)' })}</div>
@@ -6587,7 +6783,7 @@ function editUserModal(id, role) {
       <div class="form-group"><label class="form-label">Email</label>
         <input id="eu-email" type="email" class="form-input" value="${u.email || ''}"></div>
       <div class="form-group"><label class="form-label">Contact</label>
-        <input id="eu-contact" class="form-input" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')" value="${u.contact || ''}"></div>
+        <input id="eu-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${u.contact || ''}"></div>
       ${role === 'Doctor' ? `
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">Specialization</label>
@@ -6681,6 +6877,19 @@ function _togglePwReset() {
 }
 window._togglePwReset = _togglePwReset
 
+// Builds "field changed from 'old' to 'new'" clauses for an activity-log
+// action line, one per field that actually changed (a save that only
+// touched one field never drags in "email changed from x to x" for the
+// ones that didn't). Kept short-field-only by every caller — long free-
+// text fields (address, occupation, medical history) stay out of this and
+// just get named as "changed" with no value shown, so one long paragraph
+// doesn't blow out the whole log entry.
+function _logDiffParts(fields) {
+  return fields
+    .filter(([, oldVal, newVal]) => (oldVal || '') !== (newVal || ''))
+    .map(([label, oldVal, newVal]) => `${label} changed from '${oldVal || '(none)'}' to '${newVal || '(none)'}'`)
+}
+
 async function doEditUser(id, role) {
   const pool = { Admin: admins, Staff: staff, Doctor: doctors, Patient: patients }
   const u = (pool[role] || []).find(u => u.id === id)
@@ -6707,6 +6916,16 @@ async function doEditUser(id, role) {
   if (newPw && (!window.pwPolicyValid(newPw) || newPw !== cfPw)) return
   if (contact && !window.isValidContact(contact)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
 
+  // Snapshotted before any overwriting below (including the Doctor-specific
+  // fields, which used to get clobbered before the diff was ever built) so
+  // the log line can show exactly what changed, not just which fields did.
+  const oldSpecialization = u.specialization || ''
+  const oldPrcLicense     = u.prcLicense || ''
+  const oldDegree         = u.degree || ''
+  const oldSecondaryCred  = u.secondaryCredential || ''
+  const oldSecondaryPrc   = u.secondaryPrc || ''
+  const oldSortOrder      = u.sortOrder
+
   // Persist profile changes to database
   try {
     const r = await fetch('api/admin/update_user.php', {
@@ -6729,7 +6948,41 @@ async function doEditUser(id, role) {
     }
   } catch (_) { toast('Network error — changes not saved.', 'error'); return }
 
-  // Reset password via backend if provided
+  // Update in-memory array so the table reflects new values immediately
+  const prefix = role === 'Doctor' ? 'Dr. ' : ''
+  const newName = fmtFullName(fn, mn, ln, prefix)
+  // Snapshotted before overwriting u.* below, so the log line can show
+  // exactly what changed (old -> new), not just which fields did. Built now
+  // (profile fields already persisted above) rather than after the password
+  // reset attempt below, so a failed password reset can't silently swallow
+  // the log entry for profile changes that did save successfully.
+  const diffParts = _logDiffParts([
+    ['name', u.name, newName],
+    ['email', u.email, email],
+    ['status', u.status, status],
+    ['contact', u.contact, contact],
+  ])
+  if (role === 'Doctor') {
+    diffParts.push(..._logDiffParts([
+      ['specialization', oldSpecialization, specialization || oldSpecialization],
+      ['degree', oldDegree, degree || oldDegree],
+      ['PRC license', oldPrcLicense, prcLicense],
+      ['secondary credential', oldSecondaryCred, secondaryCredential],
+      ['secondary PRC license', oldSecondaryPrc, secondaryPrc],
+      ['display order', oldSortOrder, sortOrder !== null ? sortOrder : oldSortOrder],
+    ]))
+  }
+  u.firstName  = fn
+  u.middleName = mn
+  u.lastName   = ln
+  u.name       = newName
+  u.email     = email
+  u.contact   = contact
+  u.status    = status
+
+  // Reset password via backend if provided — attempted after the profile
+  // fields above are already saved, so a failure here still logs everything
+  // that did go through instead of returning silently unlogged.
   if (newPw) {
     try {
       const r = await fetch('api/users/reset_password.php', {
@@ -6737,19 +6990,26 @@ async function doEditUser(id, role) {
         body: JSON.stringify({ profileId: id, role, newPassword: newPw })
       })
       const d = await r.json()
-      if (!d.success) { toast(d.message || 'Failed to reset password.', 'error'); return }
-    } catch (_) { toast('Network error — password not reset.', 'error'); return }
+      if (!d.success) {
+        addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+          action: `Updated ${role.toLowerCase()} account: ${u.name} (${id})${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+          timestamp: nowTimestamp(), type:'user' })
+        toast(d.message || 'Failed to reset password.', 'error')
+        return
+      }
+    } catch (_) {
+      addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+        action: `Updated ${role.toLowerCase()} account: ${u.name} (${id})${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+        timestamp: nowTimestamp(), type:'user' })
+      toast('Network error — password not reset.', 'error')
+      return
+    }
+    diffParts.push('password reset')
   }
 
-  // Update in-memory array so the table reflects new values immediately
-  const prefix = role === 'Doctor' ? 'Dr. ' : ''
-  u.firstName  = fn
-  u.middleName = mn
-  u.lastName   = ln
-  u.name       = fmtFullName(fn, mn, ln, prefix)
-  u.email     = email
-  u.contact   = contact
-  u.status    = status
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Updated ${role.toLowerCase()} account: ${u.name} (${id})${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+    timestamp: nowTimestamp(), type:'user' })
 
   closeModal()
   toast(newPw ? 'User updated and password reset successfully.' : 'User updated successfully.', 'success')
@@ -6878,7 +7138,7 @@ function openAddPatientModal() {
         <div class="form-group"><label class="form-label">Email</label>
           <input type="email" id="ap-email" class="form-input" placeholder="juan@email.com"></div>
         <div class="form-group"><label class="form-label">Contact Number</label>
-          <input id="ap-contact" class="form-input" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')" placeholder="09XXXXXXXXX"></div>
+          <input id="ap-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" placeholder="0921-245-2834"></div>
       </div>
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">Date of Birth <span class="req">*</span></label>
@@ -6949,6 +7209,34 @@ async function doAddPatient() {
   }
 }
 
+// Opens from the red "Medical History" pill next to the patient's name on
+// Patient Profile (pagePatientView(), pages.js) — a big, hard-to-miss
+// callout for something that otherwise only lived as one row in the
+// Personal Info tab, easy to scroll past. Edit still happens through the
+// existing Edit Patient modal (openEditPatientModal, below) — this is a
+// read-focused view, not a second place to maintain the same field.
+function openMedicalHistoryModal(patientId) {
+  const p = patients.find(p => p.id === patientId)
+  if (!p) return
+  const canEdit = ['admin', 'staff'].includes(state.role)
+  showModal(`
+    <div class="modal-header">
+      <div class="modal-title" style="display:flex;align-items:center;gap:8px">
+        <span style="color:#D97706;display:flex">${icon('alert-circle','icon-sm')}</span>
+        Medical History — ${p.name}
+      </div>
+      <button class="modal-close" onclick="window.closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:10px;padding:16px 18px;font-size:.88rem;color:#374151;line-height:1.6;white-space:pre-wrap">${p.medicalHistory ? esc(p.medicalHistory) : 'No medical history on file.'}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="window.closeModal()">Close</button>
+      ${canEdit ? `<button class="btn-primary" onclick="window.closeModal();window.openEditPatientModal('${patientId}')">${icon('edit','icon-sm')} Edit</button>` : ''}
+    </div>`)
+}
+window.openMedicalHistoryModal = openMedicalHistoryModal
+
 function openEditPatientModal(patientId) {
   const p = patients.find(p => p.id === patientId)
   if (!p) return
@@ -6976,7 +7264,7 @@ function openEditPatientModal(patientId) {
       </div>
       <p style="font-size:.74rem;color:#9CA3AF;margin:-8px 0 14px">Locked on the patient's own Settings page, only admins can update these.</p>
       <div class="form-group"><label class="form-label">Contact</label>
-        <input id="ep-contact" class="form-input" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')" value="${p.contact}"></div>
+        <input id="ep-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${p.contact}"></div>
       <div class="form-group"><label class="form-label">Email</label>
         <input type="email" id="ep-email" class="form-input" value="${p.email}"
                ${!p.email ? 'disabled title="This patient has no login account — email can\'t be set here."' : ''}></div>
@@ -7123,10 +7411,30 @@ async function doEditPatient(patientId) {
     }
   }
 
+  // Snapshotted before overwriting p.* below, so the log line can show
+  // exactly what changed (old -> new). Long free-text fields (address,
+  // occupation, medical history) stay out of this and just get named as
+  // "updated" — see _logDiffParts()'s own comment.
+  const newFullName = fmtFullName(firstName, payload.middleName, lastName)
+  const diffParts = _logDiffParts([
+    ['name', p.name, newFullName],
+    ['email', p.email, (payload.email && p.email) ? payload.email : p.email],
+    ['contact', p.contact, payload.contact],
+    ['gender', p.gender, payload.gender || p.gender],
+    ['date of birth', p.dob, payload.dob || p.dob],
+    ['status', p.status, payload.status || p.status],
+  ])
+  const otherChanged = [
+    payload.address !== p.address,
+    payload.occupation !== p.occupation,
+    payload.medicalHistory !== p.medicalHistory,
+  ].some(Boolean)
+  if (otherChanged) diffParts.push('other patient details updated')
+
   p.firstName  = firstName
   p.middleName = payload.middleName
   p.lastName   = lastName
-  p.name       = fmtFullName(firstName, payload.middleName, lastName)
+  p.name       = newFullName
   if (payload.gender) p.gender = payload.gender
   // age isn't its own editable field — the backend derives and saves it
   // from dob — but the local cache needs the same recompute done to it,
@@ -7138,6 +7446,10 @@ async function doEditPatient(patientId) {
   p.occupation    = payload.occupation
   p.medicalHistory = payload.medicalHistory
   if (payload.status) p.status = payload.status
+
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Updated patient info: ${p.name} (${patientId})${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+    timestamp: nowTimestamp(), type:'patient' })
 
   closeModal()
   toast(np ? 'Patient info and password updated.' : 'Patient info updated.')
@@ -7209,8 +7521,17 @@ window.checkTempPassword = async function(patientId) {
         <span onclick="window.copyTempPassword()" title="Copy" style="cursor:pointer;color:#D97706;display:inline-flex;align-items:center;opacity:.65;transition:opacity .15s" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=.65">${icon('copy','icon-xs')}</span>
         <span style="display:inline-flex;align-items:center;gap:3px;font-size:.7rem;color:#D97706;font-weight:600;padding-left:2px;border-left:1px solid #FDE68A">${icon('alert-circle','icon-xs')} Not yet changed</span>`
     } else {
+      // d.changedBy is who ACTUALLY changed it (set by change_password.php
+      // for a self-service change, or reset_password.php when admin/staff
+      // reset it via this same modal's Reset Password section below) — not
+      // necessarily the patient, so this no longer just assumes it was.
+      // Null only on an account that moved off the temp password before
+      // this attribution existed; that gets a neutral label instead of a
+      // guess.
+      const roleLabel = { patient: 'patient', admin: 'admin', staff: 'staff', doctor: 'doctor' }[d.changedBy]
+      const label = roleLabel ? `Changed by ${roleLabel}` : 'Already changed'
       btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;padding:0 11px;cursor:default;white-space:nowrap;height:26px;box-sizing:border-box`
-      btn.innerHTML = `<span style="color:#16A34A;display:flex;align-items:center">${icon('check-circle','icon-xs')}</span><span style="font-size:.75rem;font-weight:600;color:#15803D">Changed by patient</span>`
+      btn.innerHTML = `<span style="color:#16A34A;display:flex;align-items:center">${icon('check-circle','icon-xs')}</span><span style="font-size:.75rem;font-weight:600;color:#15803D">${label}</span>`
     }
   } catch (_) {
     btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:0 11px;font-size:.75rem;font-weight:600;color:#DC2626;cursor:default;white-space:nowrap;height:26px;box-sizing:border-box`
@@ -7496,6 +7817,9 @@ async function submitDeletionRequest(btnEl) {
       return
     }
     if (state.user) { state.user.deletionRequestedAt = new Date().toISOString(); state.user.deletionRequestReason = reason }
+    addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A patient', role: 'Patient',
+      action: `Requested account deletion${reason ? `: reason given '${reason}'` : ''}`,
+      timestamp: nowTimestamp(), type:'patient' })
     closeModal()
     toast('Deletion request sent. Clinic staff will review it.', 'success')
     renderPage()
@@ -7517,6 +7841,9 @@ async function cancelDeletionRequest(btnEl) {
       return
     }
     if (state.user) { state.user.deletionRequestedAt = null; state.user.deletionRequestReason = '' }
+    addActivityLog({ id:'L'+Date.now(), user: state.user?.name || 'A patient', role: 'Patient',
+      action: 'Cancelled account deletion request',
+      timestamp: nowTimestamp(), type:'patient' })
     toast('Deletion request cancelled.', 'success')
     renderPage()
   } catch (_) {
@@ -7542,6 +7869,9 @@ async function dismissDeletionRequest(patientId, btnEl) {
     }
     const p = patients.find(p => p.id === patientId)
     if (p) { p.deletionRequestedAt = null; p.deletionRequestReason = '' }
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Dismissed account deletion request for ${p?.name || 'a patient'} (${patientId})`,
+      timestamp: nowTimestamp(), type:'patient' })
     toast('Deletion request dismissed. The account remains active.', 'success')
     renderPage()
   } catch (_) {
@@ -7728,6 +8058,9 @@ async function sendContactReply(id) {
     m.reply     = replyTxt
     m.repliedAt = new Date().toISOString()
     m.repliedBy = state.user?.name || 'Clinic Staff'
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Replied to contact message from ${m.name}`,
+      timestamp: nowTimestamp(), type:'settings' })
     toast(d.emailSent ? 'Reply sent and emailed to the sender.' : 'Reply saved (email could not be sent).', 'success')
     openContactMessageModal(id)
     renderPage()
@@ -7783,6 +8116,7 @@ window.confirmDeleteContactMessage = confirmDeleteContactMessage
 async function doDeleteContactMessage(id) {
   const idx = contactMessages.findIndex(m => m.id === id)
   if (idx === -1) return
+  const m = contactMessages[idx]
   const btn = document.getElementById('del-contact-msg-btn')
   if (_btnBusy(btn, 'danger', 'Deleting…')) return
   try {
@@ -7794,6 +8128,9 @@ async function doDeleteContactMessage(id) {
     if (!d.success) { toast(d.message || 'Failed to delete message.', 'error'); _btnIdle(btn); return }
   } catch (_) { toast('Network error — message not deleted.', 'error'); _btnIdle(btn); return }
 
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Deleted contact message from ${m?.name || 'a sender'}`,
+    timestamp: nowTimestamp(), type:'settings' })
   contactMessages.splice(idx, 1)
   window._contactUnreadCount = contactMessages.filter(m => !m.isRead).length
   if (window._updateContactUI) window._updateContactUI()
@@ -8041,6 +8378,17 @@ function saveClinicInfo() {
   if (!name)    { toast('Clinic name is required.', 'error'); return }
   if (!email)   { toast('Email address is required.', 'error'); return }
 
+  // Snapshotted before overwriting clinicInfo.* below, so the log line can
+  // show exactly what changed (old -> new).
+  const diffParts = _logDiffParts([
+    ['name', clinicInfo.name, name],
+    ['phone', clinicInfo.phone, phone],
+    ['address', clinicInfo.address, address],
+    ['email', clinicInfo.email, email],
+    ['hours', clinicInfo.hours, hours],
+    ['founded year', clinicInfo.foundedYear, foundedYear || clinicInfo.foundedYear],
+  ])
+
   clinicInfo.name = name
   clinicInfo.phone   = phone
   clinicInfo.mobile  = phone
@@ -8060,7 +8408,7 @@ function saveClinicInfo() {
   }).catch(() => {})
 
   addActivityLog({ id: 'L' + Date.now(), user: state.user.name, role: state.role,
-    action: 'Updated clinic information',
+    action: diffParts.length ? `Updated clinic information: ${diffParts.join('; ')}` : 'Updated clinic information',
     timestamp: nowTimestamp(), type: 'settings' })
 
   // Sync globals and DOM immediately so topbar/sidebar reflect changes without a reload
@@ -8272,13 +8620,33 @@ window.saveAppointmentPolicyContent = saveAppointmentPolicyContent
 // ════════════════════════════════════════════════════════════════
 function saveSchedulingRules() {
   const gv = id => (document.getElementById(id)?.value || '').trim()
-  consultationSettings.defaultDuration         = gv('cs-duration')  || consultationSettings.defaultDuration
-  consultationSettings.maxAdvanceBooking        = gv('cs-adv-max')   || consultationSettings.maxAdvanceBooking
-  consultationSettings.minAdvanceBooking        = gv('cs-adv-min')   || consultationSettings.minAdvanceBooking
-  consultationSettings.maxApptsPerDoctorPerDay  = parseInt(gv('cs-max-appt')) || consultationSettings.maxApptsPerDoctorPerDay
-  consultationSettings.reminderTime             = gv('cs-reminder-time')    || consultationSettings.reminderTime
-  consultationSettings.confirmDeadlineTime      = gv('cs-confirm-deadline') || consultationSettings.confirmDeadlineTime
-  consultationSettings.waitlistOfferHours       = parseInt(gv('cs-waitlist-hours')) || consultationSettings.waitlistOfferHours
+  const newDuration    = gv('cs-duration')  || consultationSettings.defaultDuration
+  const newAdvMax      = gv('cs-adv-max')   || consultationSettings.maxAdvanceBooking
+  const newAdvMin      = gv('cs-adv-min')   || consultationSettings.minAdvanceBooking
+  const newMaxAppt     = parseInt(gv('cs-max-appt')) || consultationSettings.maxApptsPerDoctorPerDay
+  const newReminder    = gv('cs-reminder-time')    || consultationSettings.reminderTime
+  const newDeadline    = gv('cs-confirm-deadline') || consultationSettings.confirmDeadlineTime
+  const newWaitlistHrs = parseInt(gv('cs-waitlist-hours')) || consultationSettings.waitlistOfferHours
+
+  // Snapshotted before overwriting consultationSettings below, so the log
+  // line can show exactly what changed (old -> new).
+  const diffParts = _logDiffParts([
+    ['default duration', consultationSettings.defaultDuration, newDuration],
+    ['max advance booking', consultationSettings.maxAdvanceBooking, newAdvMax],
+    ['min advance booking', consultationSettings.minAdvanceBooking, newAdvMin],
+    ['max appointments/doctor/day', consultationSettings.maxApptsPerDoctorPerDay, newMaxAppt],
+    ['reminder time', consultationSettings.reminderTime, newReminder],
+    ['confirm deadline', consultationSettings.confirmDeadlineTime, newDeadline],
+    ['waitlist offer hours', consultationSettings.waitlistOfferHours, newWaitlistHrs],
+  ])
+
+  consultationSettings.defaultDuration         = newDuration
+  consultationSettings.maxAdvanceBooking        = newAdvMax
+  consultationSettings.minAdvanceBooking        = newAdvMin
+  consultationSettings.maxApptsPerDoctorPerDay  = newMaxAppt
+  consultationSettings.reminderTime             = newReminder
+  consultationSettings.confirmDeadlineTime      = newDeadline
+  consultationSettings.waitlistOfferHours       = newWaitlistHrs
 
   fetch('api/clinic/settings.php', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -8294,7 +8662,7 @@ function saveSchedulingRules() {
   }).catch(() => {})
 
   addActivityLog({ id: 'L' + Date.now(), user: state.user.name, role: state.role,
-    action: 'Updated scheduling rules',
+    action: diffParts.length ? `Updated scheduling rules: ${diffParts.join('; ')}` : 'Updated scheduling rules',
     timestamp: nowTimestamp(), type: 'settings' })
   toast('Scheduling rules saved successfully.', 'success')
 }
@@ -8302,13 +8670,30 @@ window.saveSchedulingRules = saveSchedulingRules
 
 function saveOperatingHours() {
   const gv = id => (document.getElementById(id)?.value || '').trim()
-  consultationSettings.morningStart   = gv('cs-am-start')    || consultationSettings.morningStart
-  consultationSettings.morningEnd     = gv('cs-am-end')      || consultationSettings.morningEnd
-  consultationSettings.afternoonStart = gv('cs-pm-start')    || consultationSettings.afternoonStart
-  consultationSettings.afternoonEnd   = gv('cs-pm-end')      || consultationSettings.afternoonEnd
-  consultationSettings.lunchBreak     = document.getElementById('cs-lunch-break')?.checked ?? consultationSettings.lunchBreak
+  const newAmStart   = gv('cs-am-start')    || consultationSettings.morningStart
+  const newAmEnd     = gv('cs-am-end')      || consultationSettings.morningEnd
+  const newPmStart   = gv('cs-pm-start')    || consultationSettings.afternoonStart
+  const newPmEnd     = gv('cs-pm-end')      || consultationSettings.afternoonEnd
+  const newLunchBreak = document.getElementById('cs-lunch-break')?.checked ?? consultationSettings.lunchBreak
+  const newClinicDays = Array.from(document.querySelectorAll('.cs-clinic-day')).filter(cb => cb.checked).map(cb => cb.value)
 
-  consultationSettings.clinicDays = Array.from(document.querySelectorAll('.cs-clinic-day')).filter(cb => cb.checked).map(cb => cb.value)
+  // Snapshotted before overwriting consultationSettings below, so the log
+  // line can show exactly what changed (old -> new).
+  const diffParts = _logDiffParts([
+    ['morning start', consultationSettings.morningStart, newAmStart],
+    ['morning end', consultationSettings.morningEnd, newAmEnd],
+    ['afternoon start', consultationSettings.afternoonStart, newPmStart],
+    ['afternoon end', consultationSettings.afternoonEnd, newPmEnd],
+    ['lunch break', consultationSettings.lunchBreak ? 'yes' : 'no', newLunchBreak ? 'yes' : 'no'],
+    ['clinic days', (consultationSettings.clinicDays || []).join(', '), newClinicDays.join(', ')],
+  ])
+
+  consultationSettings.morningStart   = newAmStart
+  consultationSettings.morningEnd     = newAmEnd
+  consultationSettings.afternoonStart = newPmStart
+  consultationSettings.afternoonEnd   = newPmEnd
+  consultationSettings.lunchBreak     = newLunchBreak
+  consultationSettings.clinicDays     = newClinicDays
 
   fetch('api/clinic/settings.php', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -8323,7 +8708,7 @@ function saveOperatingHours() {
   }).catch(() => {})
 
   addActivityLog({ id: 'L' + Date.now(), user: state.user.name, role: state.role,
-    action: `Updated operating hours: ${consultationSettings.morningStart}–${consultationSettings.afternoonEnd}`,
+    action: diffParts.length ? `Updated operating hours: ${diffParts.join('; ')}` : 'Updated operating hours',
     timestamp: nowTimestamp(), type: 'settings' })
   toast('Operating hours saved successfully.', 'success')
 }
@@ -8342,11 +8727,12 @@ async function addService() {
   const status         = document.getElementById('svc-status')?.value    || 'active'
   const bookable       = (document.getElementById('svc-bookable')?.value || '1') === '1'
   const patientVisible = (document.getElementById('svc-patient-visible')?.value || '1') === '1'
+  const svcIcon        = document.getElementById('svc-icon')?.value || 'eye'
   if (!name) { toast('Service name is required.', 'error'); return }
   try {
     const r = await fetch('api/services/create.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description: desc, status, icon: 'eye', bookable, patientVisible })
+      body: JSON.stringify({ name, description: desc, status, icon: svcIcon, bookable, patientVisible })
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not add service.', 'error'); return }
@@ -8360,6 +8746,7 @@ async function addService() {
   window.setSelectFieldValue('svc-status', 'active')
   window.setSelectFieldValue('svc-bookable', '1')
   window.setSelectFieldValue('svc-patient-visible', '1')
+  window.svcSelectIcon('svc-icon', 'eye', document.querySelector('#svc-icon-grid button'))
   _rebuildServicesTable()
   toast('Service added successfully.', 'success')
 }
@@ -8382,26 +8769,27 @@ function editServiceModal(id) {
         <label class="form-label">Description</label>
         <input class="form-input" id="es-desc" value="${svc.description.replace(/"/g,'&quot;')}">
       </div>
-      <div class="form-row-3">
+      <div class="form-row-3" style="grid-template-columns:110px minmax(0,1.15fr) minmax(0,1fr)">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Status</label>
           ${window.selectFieldHtml('es-status', { value: svc.status, options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] })}
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Bookable</label>
-          ${window.selectFieldHtml('es-bookable', { value: svc.bookable ? '1' : '0', options: [{ value: '1', label: 'Yes — offered as an appointment type' }, { value: '0', label: 'No — display only' }] })}
+          ${window.selectFieldHtml('es-bookable', { value: svc.bookable ? '1' : '0', options: [{ value: '1', label: 'Yes, offered as an appointment type' }, { value: '0', label: 'No, display only' }] })}
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Patient Visible</label>
-          ${window.selectFieldHtml('es-patient-visible', { value: svc.patientVisible ? '1' : '0', options: [{ value: '1', label: 'Yes — shown to patients too' }, { value: '0', label: 'No — staff/admin only' }] })}
+          ${window.selectFieldHtml('es-patient-visible', { value: svc.patientVisible ? '1' : '0', options: [{ value: '1', label: 'Yes, shown to patients too' }, { value: '0', label: 'No, staff/admin only' }] })}
         </div>
       </div>
+      ${window.svcIconPickerHtml('es-icon', svc.icon)}
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="window.closeModal()">Cancel</button>
       <button class="btn-primary" id="edit-service-btn" onclick="window.doEditService(${id})">Save Changes</button>
     </div>
-  `)
+  `, 'modal-xl')
 }
 window.editServiceModal = editServiceModal
 
@@ -8414,14 +8802,26 @@ window.doEditService = async function(id) {
   const status           = document.getElementById('es-status')?.value    || svc.status
   const bookable         = (document.getElementById('es-bookable')?.value || (svc.bookable ? '1' : '0')) === '1'
   const patientVisible   = (document.getElementById('es-patient-visible')?.value || (svc.patientVisible ? '1' : '0')) === '1'
+  const svcIcon           = document.getElementById('es-icon')?.value || svc.icon
 
   const btn = document.getElementById('edit-service-btn')
   if (_btnBusy(btn, 'primary', 'Saving…')) return
 
+  // Snapshotted before Object.assign overwrites svc.* below, so the log
+  // line can show exactly what changed (old -> new).
+  const diffParts = _logDiffParts([
+    ['name', svc.name, name],
+    ['description', svc.description, description],
+    ['status', svc.status, status],
+    ['bookable', svc.bookable ? 'yes' : 'no', bookable ? 'yes' : 'no'],
+    ['patient visible', svc.patientVisible ? 'yes' : 'no', patientVisible ? 'yes' : 'no'],
+    ['icon', svc.icon, svcIcon],
+  ])
+
   try {
     const r = await fetch('api/services/update.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, name, description, status, bookable, patientVisible })
+      body: JSON.stringify({ id, name, description, status, bookable, patientVisible, icon: svcIcon })
     })
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not update service.', 'error'); _btnIdle(btn); return }
@@ -8431,6 +8831,9 @@ window.doEditService = async function(id) {
     _btnIdle(btn)
     return
   }
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: `Updated service: ${svc.name} (${id})${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
+    timestamp: nowTimestamp(), type:'settings' })
   closeModal()
   _rebuildServicesTable()
   toast('Service updated successfully.', 'success')
@@ -8845,6 +9248,17 @@ async function doSaveSchedule() {
   const saveBtn = document.getElementById('doc-sched-save-btn')
   if (_btnBusy(saveBtn, 'primary', 'Saving…')) return
 
+  // Snapshotted before the fetch resolves, so the log line can show
+  // exactly what changed (old -> new) instead of just the new days list.
+  const oldDays  = (doc?.availableDays || doc?.days || []).join(', ')
+  const newDays  = selDays.join(', ')
+  const newHours = `${startT} – ${endT}`
+  const diffParts = _logDiffParts([
+    ['days', oldDays, newDays],
+    ['hours', doc?.hours, newHours],
+    ['accepting patients', doc?.available !== false ? 'yes' : 'no', isAvail ? 'yes' : 'no'],
+  ])
+
   try {
     const r = await fetch('api/doctors/update.php', {
       method:  'POST',
@@ -8852,7 +9266,7 @@ async function doSaveSchedule() {
       body:    JSON.stringify({
         doctorId:  docId,
         days:      selDays,
-        workHours: `${startT} – ${endT}`,
+        workHours: newHours,
         available: isAvail,
       }),
     })
@@ -8860,7 +9274,7 @@ async function doSaveSchedule() {
     if (!d.success) { toast(d.message || 'Could not save schedule.', 'error'); return }
 
     addActivityLog({ id: 'L' + Date.now(), user: state.user.name, role: state.role,
-      action: `Updated availability for ${doc?.name || 'doctor'}: ${selDays.join(', ')}`,
+      action: `Updated schedule for ${doc?.name || 'doctor'}${diffParts.length ? ': ' + diffParts.join('; ') : ''}`,
       timestamp: nowTimestamp(), type: 'settings' })
 
     closeModal()
@@ -9121,6 +9535,13 @@ async function saveNewExam(patientId) {
         return
       }
 
+      // Snapshotted before overwriting p.examinations[idx] below, so the
+      // log line can call out the one field most worth flagging in a
+      // clinical audit trail — everything else (refraction values, IOP,
+      // etc.) is easy to compare in full via the exam record itself, not
+      // worth spelling out field-by-field in a one-line log entry.
+      const oldExam = p.examinations.find(ex => ex.id === examId)
+      const diagChanged = oldExam && oldExam.diagnosis !== diagnosis
       const updatedExam = {
         id: examId, date, doctor: doctorName,
         od, os, iop, pd,
@@ -9132,6 +9553,10 @@ async function saveNewExam(patientId) {
       if (idx >= 0) p.examinations[idx] = updatedExam
       else p.examinations.unshift(updatedExam)
       p.lastVisit = date
+
+      addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+        action: `Updated examination ${examId} for ${p.name} (${patientId})${diagChanged ? `: diagnosis changed from '${oldExam.diagnosis || '(none)'}' to '${diagnosis || '(none)'}'` : ''}`,
+        timestamp: nowTimestamp(), type:'examination' })
 
       toast('Examination record updated successfully.', 'success')
       navigate('patient-view', { patientId, patientName: p.name })
@@ -9149,6 +9574,10 @@ async function saveNewExam(patientId) {
       toast(d.message || 'Failed to save examination.', 'error')
       return
     }
+
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Saved optical examination ${d.id} for ${p.name} (${patientId})`,
+      timestamp: nowTimestamp(), type:'examination' })
 
     // Update local arrays so the UI stays consistent without a full reload
     p.examinations.unshift({
@@ -11379,6 +11808,9 @@ async function schedCalUnblockDate(docId, dateStr) {
     if (!d.success) { toast(d.message || 'Could not unblock date.', 'error'); _btnIdle(btn); return }
 
     if (doc) doc.blockedDates = (doc.blockedDates || []).filter(b => b.date !== dateStr)
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Unblocked ${dateStr} for ${doc?.name || 'doctor'}`,
+      timestamp: nowTimestamp(), type:'settings' })
     toast('Date unblocked.')
     // Rebuilds the banner from scratch — see schedCalBlockDate()'s note.
     schedCalSelectDate(docId, dateStr)
@@ -11492,7 +11924,7 @@ async function doBlockDate(doctorId, doctorName) {
     if (!d.success) { toast(d.message || 'Could not block date.', 'error'); return }
 
     addActivityLog({ id: 'L' + Date.now(), user: state.user.name, role: state.role,
-      action: `Blocked ${date} for ${doctorName}${reason ? ' — ' + reason : ''}`,
+      action: `Blocked ${date} for ${doctorName}${reason ? ': ' + reason : ''}`,
       timestamp: nowTimestamp(), type: 'settings' })
 
     if (window._syncDoctors) await window._syncDoctors()
@@ -11528,6 +11960,10 @@ async function doUnblockDate(doctorId, date) {
     if (!d.success) { toast(d.message || 'Could not unblock date.', 'error'); if (btn) { btn.disabled = false; btn.style.opacity = '' }; return }
 
     if (window._syncDoctors) await window._syncDoctors()
+    const docName = doctors.find(dd => dd.id === doctorId)?.name || 'doctor'
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Unblocked ${date} for ${docName}`,
+      timestamp: nowTimestamp(), type:'settings' })
     toast('Date unblocked.')
 
     const listEl = document.getElementById('block-date-list')
@@ -11645,9 +12081,18 @@ function toggleLoginPw() {
   const show = inp.type === 'password'
   inp.type = show ? 'text' : 'password'
   // FB-style: full eye + diagonal slash = hidden (default), plain open eye = revealed after click.
-  if (ico) ico.innerHTML = show
-    ? `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`
-    : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line x1="2" y1="2" x2="22" y2="22"/>`
+  if (ico) {
+    ico.innerHTML = show
+      ? `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line x1="2" y1="2" x2="22" y2="22"/>`
+    // Same active-orange convention as the Settings password fields
+    // (togglePwVisibility() above) — stays colored the whole time the
+    // password is visible, not just on hover. Clearing the inline style
+    // when hidden lets .lf-pw-eye's own CSS (default gray, orange on
+    // hover) take back over.
+    const btn = ico.closest('.lf-pw-eye')
+    if (btn) btn.style.color = show ? '#E8760A' : ''
+  }
 }
 window.toggleLoginPw = toggleLoginPw
 
@@ -11661,7 +12106,12 @@ function toggleRegPw(inputId, iconId) {
   const show = inp.type === 'password'
   inp.type = show ? 'text' : 'password'
   // FB-style: slashed eye = hidden (default), open eye = revealed after click.
-  if (ico) ico.innerHTML = show ? EYE_OPEN : EYE_CLOSED
+  if (ico) {
+    ico.innerHTML = show ? EYE_OPEN : EYE_CLOSED
+    // Same active-orange convention as toggleLoginPw()/togglePwVisibility() above.
+    const btn = ico.closest('.lf-pw-eye')
+    if (btn) btn.style.color = show ? '#E8760A' : ''
+  }
 }
 window.toggleRegPw = toggleRegPw
 
@@ -12015,6 +12465,8 @@ async function handleLogoUpload(input, previewId) {
     renderTopbar()
     // Notify other open tabs (index.html, public pages) via storage event
     localStorage.setItem('_canaopticalclinic_logo_url', bust)
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: 'Updated clinic logo', timestamp: nowTimestamp(), type:'settings' })
     toast('Logo updated.', 'success')
   } catch (_) {
     toast('Network error — could not upload logo.', 'error')
@@ -12037,6 +12489,8 @@ async function handleHeroUpload(input) {
     const bust = d.heroUrl + '?t=' + Date.now()
     const el = document.getElementById('ci-hero-preview')
     if (el) el.src = bust
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: 'Updated hero background image', timestamp: nowTimestamp(), type:'settings' })
     toast('Hero background updated.', 'success')
   } catch (_) {
     toast('Network error — could not upload hero image.', 'error')
@@ -12068,6 +12522,8 @@ async function handleVideoUpload(input) {
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not upload video.', 'error'); return }
     clinicInfo.videoUrl = d.videoUrl + '?t=' + Date.now()
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: 'Updated clinic video', timestamp: nowTimestamp(), type:'settings' })
     toast('Clinic video updated.', 'success')
     renderPage() // swaps the empty-slot icon for a real preview, button label, and Remove option
   } catch (_) {
@@ -12082,6 +12538,8 @@ async function removeClinicVideo() {
     const d = await r.json()
     if (!d.success) { toast(d.message || 'Could not remove video.', 'error'); return }
     clinicInfo.videoUrl = null
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: 'Removed clinic video', timestamp: nowTimestamp(), type:'settings' })
     toast('Clinic video removed.', 'success')
     renderPage()
   } catch (_) {
@@ -12228,6 +12686,8 @@ async function galleryDeleteSelected() {
             body: JSON.stringify({ id })
           })
         ));
+        addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+          action: `Deleted ${ids.length} photo${ids.length !== 1 ? 's' : ''} from the gallery`, timestamp: nowTimestamp(), type:'settings' })
         toast(`${ids.length} photo${ids.length !== 1 ? 's' : ''} deleted.`, 'success');
         _galSelMode = false;
         _galSelected.clear();
@@ -12744,6 +13204,8 @@ async function _galleryDoUpload(dataUrl) {
     body: JSON.stringify({ imageData: dataUrl, caption: '' })
   }).then(r => r.json());
   if (!d.success) { toast(d.message || 'Upload failed.', 'error'); return; }
+  addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+    action: 'Added a photo to the gallery', timestamp: nowTimestamp(), type:'settings' })
   toast('Photo added to gallery.', 'success');
   loadGalleryAdmin();
 }
@@ -12802,6 +13264,8 @@ async function galleryDeletePhoto(id) {
           body: JSON.stringify({ id })
         }).then(r => r.json());
         if (!d.success) { toast(d.message || 'Delete failed.', 'error'); return; }
+        addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+          action: 'Removed a photo from the gallery', timestamp: nowTimestamp(), type:'settings' })
         toast('Photo removed.', 'success');
         loadGalleryAdmin();
       } catch (_) { toast('Network error — could not delete photo.', 'error'); }
@@ -12822,6 +13286,8 @@ async function _doSaveGalleryMax(max) {
       body: JSON.stringify({ galleryMaxPhotos: max })
     }).then(r => r.json());
     if (!d.success) { toast(d.message || 'Save failed.', 'error'); return; }
+    addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
+      action: `Updated gallery photo limit to ${max}`, timestamp: nowTimestamp(), type:'settings' })
     if (clinicInfo) clinicInfo.galleryMaxPhotos = max;
     // Keep the input showing the saved value across re-renders within this session
     const _inp = document.getElementById('gallery-max-input');
@@ -12994,6 +13460,168 @@ window._doClearAllLogs = async function () {
   window.toast('Activity log cleared.', 'success')
 }
 
+// ════════════════════════════════════════════════════════════════
+//  XLSX EXPORT — a genuine, dependency-free .xlsx writer (no CDN/vendor
+//  library pulled in just for this). Plain CSV exports (the old approach
+//  here) always land in Excel with every column at the same cramped
+//  default width, no bold header, and a "possible data loss" banner since
+//  Excel treats CSV as a foreign format — every column in the Activity
+//  Log export needed manual widening before the Action text was even
+//  readable. A real .xlsx has none of that: it's just a zip of a few XML
+//  parts, and since XLSX permits STORED (uncompressed) zip entries, the
+//  whole archive can be hand-built with a small CRC32 + zip writer below
+//  instead of needing a compression library too.
+// ════════════════════════════════════════════════════════════════
+let _xlsxCrcTable = null
+function _xlsxCrc32(bytes) {
+  if (!_xlsxCrcTable) {
+    _xlsxCrcTable = new Uint32Array(256)
+    for (let n = 0; n < 256; n++) {
+      let c = n
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
+      _xlsxCrcTable[n] = c >>> 0
+    }
+  }
+  let crc = 0xFFFFFFFF
+  for (let i = 0; i < bytes.length; i++) crc = (_xlsxCrcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8)) >>> 0
+  return (crc ^ 0xFFFFFFFF) >>> 0
+}
+
+// Packs {name, data(Uint8Array)} entries into a valid .zip archive using
+// the STORED method (no deflate) — every part xlsx needs is small plain
+// XML text, so skipping compression trades a slightly larger file for not
+// needing an actual compressor, which is the whole point of doing this
+// without a vendored library.
+function _xlsxZip(entries) {
+  const localParts = [], centralParts = []
+  let offset = 0
+  const enc = new TextEncoder()
+  entries.forEach(({ name, data }) => {
+    const nameBytes = enc.encode(name)
+    const crc  = _xlsxCrc32(data)
+    const size = data.length
+
+    const local = new Uint8Array(30 + nameBytes.length)
+    const lv = new DataView(local.buffer)
+    lv.setUint32(0, 0x04034b50, true)
+    lv.setUint16(4, 20, true)
+    lv.setUint16(6, 0x0800, true)
+    lv.setUint16(8, 0, true)
+    lv.setUint16(10, 0, true)
+    lv.setUint16(12, 0x21, true) // DOS date: Jan 1 1980 — timestamp is irrelevant here, just needs to be valid
+    lv.setUint32(14, crc, true)
+    lv.setUint32(18, size, true)
+    lv.setUint32(22, size, true)
+    lv.setUint16(26, nameBytes.length, true)
+    lv.setUint16(28, 0, true)
+    local.set(nameBytes, 30)
+    localParts.push(local, data)
+
+    const central = new Uint8Array(46 + nameBytes.length)
+    const cv = new DataView(central.buffer)
+    cv.setUint32(0, 0x02014b50, true)
+    cv.setUint16(4, 20, true)
+    cv.setUint16(6, 20, true)
+    cv.setUint16(8, 0x0800, true)
+    cv.setUint16(10, 0, true)
+    cv.setUint16(12, 0, true)
+    cv.setUint16(14, 0x21, true)
+    cv.setUint32(16, crc, true)
+    cv.setUint32(20, size, true)
+    cv.setUint32(24, size, true)
+    cv.setUint16(28, nameBytes.length, true)
+    cv.setUint16(30, 0, true)
+    cv.setUint16(32, 0, true)
+    cv.setUint16(34, 0, true)
+    cv.setUint16(36, 0, true)
+    cv.setUint32(38, 0, true)
+    cv.setUint32(42, offset, true)
+    central.set(nameBytes, 46)
+    centralParts.push(central)
+
+    offset += local.length + data.length
+  })
+
+  const centralStart = offset
+  const centralSize   = centralParts.reduce((s, p) => s + p.length, 0)
+
+  const eocd = new Uint8Array(22)
+  const ev = new DataView(eocd.buffer)
+  ev.setUint32(0, 0x06054b50, true)
+  ev.setUint16(8, entries.length, true)
+  ev.setUint16(10, entries.length, true)
+  ev.setUint32(12, centralSize, true)
+  ev.setUint32(16, centralStart, true)
+
+  const out = new Uint8Array(offset + centralSize + eocd.length)
+  let pos = 0
+  localParts.forEach(p => { out.set(p, pos); pos += p.length })
+  centralParts.forEach(p => { out.set(p, pos); pos += p.length })
+  out.set(eocd, pos)
+  return out
+}
+
+function _xlsxEsc(s) {
+  return String(s ?? '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ') // control chars aren't valid in XML 1.0 text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Builds a real .xlsx Blob: bold/filled header row, real per-column
+// widths (colWidths, in roughly "characters"), and the header row frozen
+// + auto-filterable — every one of the CSV export's actual shortcomings.
+// `rows` cells that are typeof 'number' are written as real numeric
+// cells; everything else is written as text.
+function exportTableAsXlsx(sheetName, header, rows, colWidths) {
+  const enc = new TextEncoder()
+  const colLetter = i => String.fromCharCode(65 + i) // only ever called with <26 columns app-wide
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`
+
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${_xlsxEsc(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`
+
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`
+
+  // fontId 1 = white bold header text, fillId 2 = brand orange (#E8760A)
+  // header background — fillId 0/1 ("none"/"gray125") are required stock
+  // entries every xlsx styles.xml must declare even when unused.
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8760A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>`
+
+  const cols = `<cols>${colWidths.map((w, i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`
+
+  const headerCells = header.map((h, i) => `<c r="${colLetter(i)}1" s="1" t="inlineStr"><is><t xml:space="preserve">${_xlsxEsc(h)}</t></is></c>`).join('')
+
+  const bodyRows = rows.map((row, ri) => {
+    const r = ri + 2
+    const cells = row.map((val, ci) => {
+      const ref = `${colLetter(ci)}${r}`
+      return typeof val === 'number'
+        ? `<c r="${ref}"><v>${val}</v></c>`
+        : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${_xlsxEsc(val)}</t></is></c>`
+    }).join('')
+    return `<row r="${r}">${cells}</row>`
+  }).join('')
+
+  const lastCol = colLetter(header.length - 1)
+  const lastRow = rows.length + 1
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${cols}<sheetData><row r="1">${headerCells}</row>${bodyRows}</sheetData><autoFilter ref="A1:${lastCol}${lastRow}"/></worksheet>`
+
+  const zipBytes = _xlsxZip([
+    { name: '[Content_Types].xml',        data: enc.encode(contentTypes) },
+    { name: '_rels/.rels',                data: enc.encode(rootRels) },
+    { name: 'xl/workbook.xml',            data: enc.encode(workbook) },
+    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(workbookRels) },
+    { name: 'xl/styles.xml',              data: enc.encode(styles) },
+    { name: 'xl/worksheets/sheet1.xml',   data: enc.encode(sheet) },
+  ])
+
+  return new Blob([zipBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}
+window.exportTableAsXlsx = exportTableAsXlsx
+
 function exportLog() {
   if (!activityLog.length) { toast('No log entries to export.', 'error'); return }
 
@@ -13021,24 +13649,76 @@ function exportLog() {
   const header = ['#', 'User', 'Role', 'Action', 'Timestamp', 'Type', 'IP Address']
   const rows   = filtered.map((l, i) => [
     i + 1,
-    `"${(l.user   || '').replace(/"/g, '""')}"`,
-    `"${(l.role   || '').replace(/"/g, '""')}"`,
-    `"${(l.action || '').replace(/"/g, '""')}"`,
+    l.user   || '',
+    l.role   || '',
+    l.action || '',
     // Same 12-hour format the table itself displays (fmtTimestamp12h) —
     // exporting the raw "YYYY-MM-DD HH:MM:SS" DB string instead made the
     // file read differently from what was on screen.
-    `"${fmtTimestamp12h(l.timestamp).replace(/"/g, '""')}"`,
+    fmtTimestamp12h(l.timestamp),
     l.type || '',
     l.ip || ''
   ])
-  const csv = [header, ...rows].map(r => r.join(',')).join('\n')
-  const a   = document.createElement('a')
-  a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
-  a.download = `cana-activity-log-${localDateStr()}.csv`
+  // Widths are in roughly "characters" (xlsx's own column-width unit) —
+  // Action gets by far the most room since it's the one field that was
+  // always unreadably clipped in the old CSV export's default Excel widths.
+  const blob = exportTableAsXlsx('Activity Log', header, rows, [6, 22, 12, 70, 20, 14, 16])
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `cana-activity-log-${localDateStr()}.xlsx`
   a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
   toast(`Exported ${filtered.length} log entr${filtered.length !== 1 ? 'ies' : 'y'}.`, 'success')
 }
 window.exportLog = exportLog
+
+// Opens on clicking any Activity Log row (pageActivityLog(), pages.js) —
+// the table's own Action column is deliberately still truncated with an
+// ellipsis (long messages would otherwise blow out the column and break
+// the table's layout for every other row), so this is the one place the
+// full, untruncated text is actually readable end to end.
+function viewActivityLogDetail(id) {
+  const l = activityLog.find(entry => entry.id === id)
+  if (!l) return
+  const typeLabel = l.type ? l.type.charAt(0).toUpperCase() + l.type.slice(1) : 'Info'
+  showModal(`
+    <div class="modal-header">
+      <div class="modal-title">Activity Log Entry</div>
+      <button class="modal-close" onclick="window.closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        ${avatar(l.user, 'patient-avatar', l.photoUrl || null)}
+        <div style="min-width:0">
+          <div style="font-size:.92rem;font-weight:700;color:#1C1C1C">${esc(l.user)}</div>
+          <div style="margin-top:2px">${badge((l.role || '').toLowerCase())}</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;margin-bottom:6px">Action</div>
+        <div style="background:#F9FAFB;border:1px solid #F0F0F2;border-radius:10px;padding:14px 16px;font-size:.88rem;color:#374151;line-height:1.6;white-space:pre-wrap;word-break:break-word">${esc(l.action)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;margin-bottom:4px">Timestamp</div>
+          <div style="font-size:.84rem;color:#1C1C1C">${fmtTimestamp12h(l.timestamp)}</div>
+        </div>
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;margin-bottom:4px">Type</div>
+          <div style="font-size:.84rem;color:#1C1C1C">${esc(typeLabel)}</div>
+        </div>
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;margin-bottom:4px">IP Address</div>
+          <div style="font-size:.84rem;color:#1C1C1C;font-family:monospace">${esc(l.ip || '—')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="window.closeModal()">Close</button>
+    </div>`)
+}
+window.viewActivityLogDetail = viewActivityLogDetail
 
 // ════════════════════════════════════════════════════════════════
 //  REPORTS — generateReport + helpers
@@ -13468,9 +14148,9 @@ function generateReport() {
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center" class="rpt-no-print">
-            <button class="btn-secondary" onclick="window.exportReportCSV()"
+            <button class="btn-secondary" onclick="window.exportReportXlsx()"
                     style="font-size:.78rem;padding:7px 14px;display:flex;align-items:center;gap:6px">
-              ${icon('download','icon-sm')} Export CSV
+              ${icon('download','icon-sm')} Export to Excel
             </button>
             <button class="btn-secondary" id="rpt-download-btn" onclick="window.downloadReportPDF()"
                     style="font-size:.78rem;padding:7px 14px;display:flex;align-items:center;gap:6px">

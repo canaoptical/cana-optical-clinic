@@ -2773,7 +2773,14 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
 .form-hint { font-size: 0.74rem; color: #9CA3AF; margin-top: 4px; }
 
 .form-row-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
-.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+/* minmax(0, 1fr), not plain 1fr — a plain 1fr track can still grow past its
+   fair equal share to fit a grid item's own content (a select showing a
+   long option label, e.g. "Yes, offered as an appointment type"), squeezing
+   its siblings and making all 3 columns visibly shift width every time a
+   different option gets picked. minmax(0, 1fr) caps each track's minimum at
+   0 so content shrinks/ellipsizes inside a stable, always-equal column
+   instead of resizing it — same fix .form-row-2 already had. */
+.form-row-3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 
 .section-label {
   font-family: 'Poppins', sans-serif;
