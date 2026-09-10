@@ -50,6 +50,63 @@ function avatar(name, cls = 'patient-avatar', photoUrl = null) {
 }
 window.avatarFallbackAttr = avatarFallbackAttr
 
+// Shared 80x80 clickable avatar + camera-upload badge, used by all 4 "My
+// Profile" pages (admin/doctor/staff/patient Settings) — used to be
+// hand-duplicated 4 times with only the id prefix/name/photoUrl differing.
+// Each page also has its own standalone "Change Photo" button elsewhere in
+// its layout (not part of this helper) — removePhotoBtnHtml() below is
+// meant to sit right beside that same button, not on the picture itself.
+function profilePhotoEditorHtml(idPrefix, name, photoUrl) {
+  const avatarId = `${idPrefix}-avatar`
+  const inputId  = `${idPrefix}-photo-input`
+  return `
+    <div style="position:relative;flex-shrink:0">
+      <label for="${inputId}" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
+        <div id="${avatarId}" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
+          ${photoUrl
+            ? `<img src="${photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(name)}">`
+            : initials(name)}
+        </div>
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"
+             onmouseover="this.style.background='rgba(0,0,0,.45)';this.firstElementChild.style.opacity='1'"
+             onmouseout="this.style.background='rgba(0,0,0,0)';this.firstElementChild.style.opacity='0'">
+          <span style="color:#fff;opacity:0;transition:opacity .2s;pointer-events:none;display:flex">
+            ${ic('camera','icon-sm')}
+          </span>
+        </div>
+      </label>
+      <label for="${inputId}" title="Change photo" style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#E8760A;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);transition:background .15s,transform .1s"
+             onmouseover="this.style.background='#C4720E'"
+             onmouseout="this.style.background='#E8760A'"
+             onmousedown="this.style.transform='scale(.9)'"
+             onmouseup="this.style.transform='scale(1)'">
+        ${ic('camera','icon-sm')}
+      </label>
+      <input type="file" id="${inputId}" accept="image/*" style="display:none"
+             onchange="window.handlePhotoUpload(this,'${avatarId}')">
+    </div>`
+}
+window.profilePhotoEditorHtml = profilePhotoEditorHtml
+
+// A plain button meant to sit right next to each page's own "Change Photo"
+// button (not on the avatar itself) — new, since self-service upload
+// existed but there was no way back to the default orange-initials avatar
+// short of overwriting it with another photo. Only rendered when there's
+// an actual photo to remove.
+function removePhotoBtnHtml(idPrefix, name, photoUrl) {
+  if (!photoUrl) return ''
+  const safeName = name.replace(/'/g, "\\'")
+  // .btn-ghost's own padding/font-size (7px 14px, .78rem) run smaller than
+  // .btn-secondary's (9px 20px, .85rem) — overridden inline so this sits at
+  // exactly the same size as the Change Photo button right next to it.
+  return `
+  <button type="button" class="btn-ghost" onclick="window.removeProfilePhoto(this,'${idPrefix}-avatar','${safeName}')"
+          style="flex-shrink:0;color:#DC2626;border-color:#FECACA;padding:9px 20px;font-size:.85rem">
+    ${ic('trash-2','icon-sm')} Remove Photo
+  </button>`
+}
+window.removePhotoBtnHtml = removePhotoBtnHtml
+
 // Case/whitespace/honorific-insensitive compare — forgiving of how the same
 // person's name is typed (extra spaces, casing, a doctor's "Dr." prefix),
 // but not a fuzzy/partial match: two genuinely different names never pass.
@@ -2182,32 +2239,19 @@ function pageAdminSettings() {
       <!-- Profile Banner -->
       <div class="card" style="padding:28px 32px;margin-bottom:20px">
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-          <div style="position:relative;flex-shrink:0">
-            <label for="ad-photo-input" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
-              <div id="ad-avatar" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
-                ${user.photoUrl
-                  ? `<img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(admName)}">`
-                  : initials(admName)}
-              </div>
-              <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"
-                   onmouseover="this.style.background='rgba(0,0,0,.45)'"
-                   onmouseout="this.style.background='rgba(0,0,0,0)'"></div>
-            </label>
-            <label for="ad-photo-input" style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#E8760A;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-              ${ic('camera','icon-sm')}
-            </label>
-            <input type="file" id="ad-photo-input" accept="image/*" style="display:none"
-                   onchange="window.handlePhotoUpload(this,'ad-avatar')">
-          </div>
+          ${window.profilePhotoEditorHtml('ad', admName, user.photoUrl)}
           <div style="flex:1;min-width:160px">
             <div style="font-size:1.2rem;font-weight:700;color:#1C1C1C">${admName}</div>
             <div style="font-size:.85rem;color:#E8760A;font-weight:600;margin-top:3px">Administrator</div>
             <div style="font-size:.82rem;color:#6B7280;margin-top:4px">${adm.email || ''}</div>
             <div style="font-size:.82rem;color:#6B7280">${adm.contact || ''}</div>
           </div>
-          <label for="ad-photo-input" class="btn-secondary" style="flex-shrink:0;cursor:pointer">
-            ${ic('camera','icon-sm')} Change Photo
-          </label>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <label for="ad-photo-input" class="btn-secondary" style="cursor:pointer">
+              ${ic('camera','icon-sm')} Change Photo
+            </label>
+            ${window.removePhotoBtnHtml('ad', admName, user.photoUrl)}
+          </div>
         </div>
       </div>
 
@@ -3430,23 +3474,7 @@ function pageDoctorSettings() {
       <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
 
         <!-- Clickable avatar -->
-        <div style="position:relative;flex-shrink:0">
-          <label for="doc-photo-input" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
-            <div id="doc-avatar" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
-              ${user.photoUrl
-                ? `<img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(docName)}">`
-                : initials(docName)}
-            </div>
-            <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"
-                 onmouseover="this.style.background='rgba(0,0,0,.45)'"
-                 onmouseout="this.style.background='rgba(0,0,0,0)'"></div>
-          </label>
-          <label for="doc-photo-input" style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#E8760A;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-            ${ic('camera','icon-sm')}
-          </label>
-          <input type="file" id="doc-photo-input" accept="image/*" style="display:none"
-                 onchange="window.handlePhotoUpload(this,'doc-avatar')">
-        </div>
+        ${window.profilePhotoEditorHtml('doc', docName, user.photoUrl)}
 
         <div style="flex:1;min-width:160px">
           <div style="font-size:1.2rem;font-weight:700;color:#1C1C1C">${docName}</div>
@@ -3454,9 +3482,12 @@ function pageDoctorSettings() {
           <div style="font-size:.82rem;color:#6B7280;margin-top:4px">${doc.email || ''}</div>
           <div style="font-size:.82rem;color:#6B7280">${doc.contact || ''}</div>
         </div>
-        <label for="doc-photo-input" class="btn-secondary" style="flex-shrink:0;cursor:pointer">
-          ${ic('camera','icon-sm')} Change Photo
-        </label>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <label for="doc-photo-input" class="btn-secondary" style="cursor:pointer">
+            ${ic('camera','icon-sm')} Change Photo
+          </label>
+          ${window.removePhotoBtnHtml('doc', docName, user.photoUrl)}
+        </div>
       </div>
     </div>
 
@@ -5817,23 +5848,7 @@ function pageStaffSettings() {
       <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
 
         <!-- Clickable avatar -->
-        <div style="position:relative;flex-shrink:0">
-          <label for="st-photo-input" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
-            <div id="st-avatar" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
-              ${user.photoUrl
-                ? `<img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(staffName)}">`
-                : initials(staffName)}
-            </div>
-            <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"
-                 onmouseover="this.style.background='rgba(0,0,0,.45)'"
-                 onmouseout="this.style.background='rgba(0,0,0,0)'"></div>
-          </label>
-          <label for="st-photo-input" style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#E8760A;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-            ${ic('camera','icon-sm')}
-          </label>
-          <input type="file" id="st-photo-input" accept="image/*" style="display:none"
-                 onchange="window.handlePhotoUpload(this,'st-avatar')">
-        </div>
+        ${window.profilePhotoEditorHtml('st', staffName, user.photoUrl)}
 
         <div style="flex:1;min-width:160px">
           <div style="font-size:1.2rem;font-weight:700;color:#1C1C1C">${staffName}</div>
@@ -5841,9 +5856,12 @@ function pageStaffSettings() {
           <div style="font-size:.82rem;color:#6B7280;margin-top:4px">${staffMember.email || ''}</div>
           <div style="font-size:.82rem;color:#6B7280">${staffMember.contact || ''}</div>
         </div>
-        <label for="st-photo-input" class="btn-secondary" style="flex-shrink:0;cursor:pointer">
-          ${ic('camera','icon-sm')} Change Photo
-        </label>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <label for="st-photo-input" class="btn-secondary" style="cursor:pointer">
+            ${ic('camera','icon-sm')} Change Photo
+          </label>
+          ${window.removePhotoBtnHtml('st', staffName, user.photoUrl)}
+        </div>
       </div>
     </div>
 
@@ -6287,31 +6305,7 @@ function pagePatientSettings() {
       <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
 
         <!-- Clickable avatar -->
-        <div style="position:relative;flex-shrink:0">
-          <label for="pt-photo-input" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
-            <div id="pt-avatar" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
-              ${user.photoUrl
-                ? `<img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(user.name)}">`
-                : initials(user.name)}
-            </div>
-            <!-- Camera overlay -->
-            <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"
-                 onmouseover="this.style.background='rgba(0,0,0,.45)'"
-                 onmouseout="this.style.background='rgba(0,0,0,0)'">
-              <span style="color:#fff;opacity:0;transition:opacity .2s;pointer-events:none"
-                    onmouseover="this.style.opacity='1'"
-                    onmouseout="this.style.opacity='0'">
-                ${ic('camera','icon-sm')}
-              </span>
-            </div>
-          </label>
-          <!-- Camera badge -->
-          <label for="pt-photo-input" style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:#E8760A;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)">
-            ${ic('camera','icon-sm')}
-          </label>
-          <input type="file" id="pt-photo-input" accept="image/*" style="display:none"
-                 onchange="window.handlePhotoUpload(this,'pt-avatar')">
-        </div>
+        ${window.profilePhotoEditorHtml('pt', user.name, user.photoUrl)}
 
         <div style="flex:1;min-width:160px">
           <div style="font-size:1.2rem;font-weight:700;color:#1C1C1C">${user.name}</div>
@@ -6320,9 +6314,12 @@ function pagePatientSettings() {
           <div style="font-size:.82rem;color:#6B7280">${patient?.contact || ''}</div>
           <div style="font-size:.75rem;color:#9CA3AF;margin-top:5px">Member since ${regDate}</div>
         </div>
-        <label for="pt-photo-input" class="btn-secondary" style="flex-shrink:0;cursor:pointer">
-          ${ic('camera','icon-sm')} Change Photo
-        </label>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <label for="pt-photo-input" class="btn-secondary" style="cursor:pointer">
+            ${ic('camera','icon-sm')} Change Photo
+          </label>
+          ${window.removePhotoBtnHtml('pt', user.name, user.photoUrl)}
+        </div>
       </div>
     </div>
 

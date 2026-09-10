@@ -12136,6 +12136,33 @@ function handlePhotoUpload(input, avatarId) {
 }
 window.handlePhotoUpload = handlePhotoUpload
 
+// Self-service upload existed already, but there was no way back to the
+// default orange-initials avatar short of picking another photo — the
+// button that calls this only ever renders (profilePhotoEditorHtml(),
+// pages.js) when there's an actual photo currently set.
+async function removeProfilePhoto(btn, avatarId, name) {
+  if (_btnBusy(btn, 'danger', '')) return
+  try {
+    const r = await fetch('api/users/upload_photo.php', { method: 'DELETE' })
+    const d = await r.json()
+    if (!d.success) { toast(d.message || 'Could not remove photo.', 'error'); _btnIdle(btn); return }
+    if (state.user) state.user.photoUrl = null
+    const roleArray = { patient: patients, doctor: doctors, staff: staff, admin: admins }[state.role]
+    const entry = roleArray && roleArray.find(u => u.id === state.user?.id)
+    if (entry) entry.photoUrl = null
+    toast('Profile photo removed.', 'success')
+    // Re-renders the current page (rebuilding the avatar editor fresh, so
+    // this remove button itself disappears) and the sidebar, so every
+    // on-screen copy of the photo reverts to initials together.
+    window.navigate(state.page, { ...state.params })
+    if (window.renderSidebar) window.renderSidebar()
+  } catch (_) {
+    toast('Network error — could not remove photo.', 'error')
+    _btnIdle(btn)
+  }
+}
+window.removeProfilePhoto = removeProfilePhoto
+
 function _applyAvatarPhoto(avatarId, src) {
   const imgTag = `<img src="${src}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`
   const el = document.getElementById(avatarId)
@@ -12432,9 +12459,15 @@ function _uploadPhotoBlob(blob, avatarId) {
         if (entry) entry.photoUrl = d.photoUrl
       }
 
-      // Swap the preview src to the permanent server path
-      _applyAvatarPhoto(avatarId, d.photoUrl)
       toast('Profile photo updated.', 'success')
+      // Full re-render (not just swapping the preview src) so the "Remove
+      // Photo" button — only rendered when photoUrl is truthy — shows up
+      // right away instead of needing a page reload first. This also
+      // means the img actually points at d.photoUrl's server-generated
+      // cache-busting query string (upload_photo.php appends one) rather
+      // than staying on the local blob preview URL, which was never a
+      // real, reloadable image location.
+      window.navigate(state.page, { ...state.params })
     })
     .catch(() => { URL.revokeObjectURL(previewUrl); toast('Upload failed. Please try again.', 'error') })
 }
