@@ -12136,6 +12136,40 @@ function handlePhotoUpload(input, avatarId) {
 }
 window.handlePhotoUpload = handlePhotoUpload
 
+// Fires when the CURRENT logged-in user's own avatar image 404s — a
+// stored photo_url whose file is actually gone (e.g. wiped by Railway's
+// ephemeral filesystem between deploys, see upload_photo.php's own
+// comment). avatarFallbackAttr() (pages.js) already does the same local
+// text-swap for ANY person's avatar (patient tables, doctor cards, etc.),
+// but that alone means the exact same failed request + fallback repeats
+// on every single re-render forever, since the underlying photoUrl never
+// actually changes — every sidebar click/page navigation flashes broken
+// image -> initials again. This additionally clears photoUrl out of
+// local state AND the server record (self only, same DELETE the Remove
+// Photo button uses) so every render after the first just skips
+// attempting the image at all. Only wired to the CURRENT user's own
+// avatar (sidebar, My Profile pages) — never to someone else's, since
+// silently clearing another account's photo from a passive failed image
+// load isn't this viewer's call to make.
+function selfAvatarFallbackAttr(name) {
+  return `window._handleSelfAvatarError(this,'${(name || '').replace(/'/g, "\\'")}')`
+}
+window.selfAvatarFallbackAttr = selfAvatarFallbackAttr
+
+function _handleSelfAvatarError(imgEl, name) {
+  const w = imgEl.parentElement
+  if (w && w.className) { w.style.background = ''; w.style.padding = ''; w.style.overflow = '' }
+  if (w) w.textContent = window.initials ? window.initials(name) : ''
+  if (state.user) state.user.photoUrl = null
+  const roleArray = { patient: patients, doctor: doctors, staff: staff, admin: admins }[state.role]
+  const entry = roleArray && roleArray.find(u => u.id === state.user?.id)
+  if (entry) entry.photoUrl = null
+  // Best-effort — if this fails (network blip), the same cleanup just
+  // retries on the next broken-image render instead.
+  fetch('api/users/upload_photo.php', { method: 'DELETE' }).catch(() => {})
+}
+window._handleSelfAvatarError = _handleSelfAvatarError
+
 // Self-service upload existed already, but there was no way back to the
 // default orange-initials avatar short of picking another photo — the
 // button that calls this only ever renders (profilePhotoEditorHtml(),

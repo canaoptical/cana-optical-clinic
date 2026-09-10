@@ -64,7 +64,7 @@ function profilePhotoEditorHtml(idPrefix, name, photoUrl) {
       <label for="${inputId}" style="cursor:pointer;display:block;width:80px;height:80px;border-radius:50%;overflow:hidden;position:relative">
         <div id="${avatarId}" style="width:80px;height:80px;border-radius:50%;background:#E8760A;color:#fff;font-size:1.5rem;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden">
           ${photoUrl
-            ? `<img src="${photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${avatarFallbackAttr(name)}">`
+            ? `<img src="${photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${window.selfAvatarFallbackAttr ? window.selfAvatarFallbackAttr(name) : avatarFallbackAttr(name)}">`
             : initials(name)}
         </div>
         <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background .2s"

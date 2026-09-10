@@ -519,8 +519,15 @@ function renderSidebar() {
   const displayName = user?.name || 'User'
   const roleBadgeMap = { admin: 'Administrator', staff: 'Staff', doctor: 'Doctor', patient: 'Patient' }
   const roleBadge = roleBadgeMap[role] || role
+  // onerror here also clears the dead photoUrl out of state/the server
+  // (window.selfAvatarFallbackAttr, main.js) — without that, a stored
+  // photo whose file no longer exists (e.g. wiped by ephemeral hosting
+  // storage) would fail to load and fall back to initials again on every
+  // single navigation, since renderSidebar() rebuilds this on every click
+  // and nothing before this line stopped it from retrying the same dead
+  // URL forever.
   const avatarHtml = user?.photoUrl
-    ? `<div class="sidebar-avatar sidebar-profile-avatar" style="overflow:hidden;padding:0;background:transparent"><img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="var w=this.parentElement;if(w&&w.className){w.style.background='';w.style.padding='';w.style.overflow=''}if(w)w.textContent='${initials}'"></div>`
+    ? `<div class="sidebar-avatar sidebar-profile-avatar" style="overflow:hidden;padding:0;background:transparent"><img src="${user.photoUrl}" alt="Photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" onerror="${window.selfAvatarFallbackAttr ? window.selfAvatarFallbackAttr(displayName) : ''}"></div>`
     : `<div class="sidebar-avatar sidebar-profile-avatar">${initials}</div>`
 
   document.getElementById('sidebar-nav').innerHTML = nav
