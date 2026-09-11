@@ -1605,6 +1605,15 @@ function pageQRScanner() {
           </div>
         </div>
 
+        <!-- Recent scans — who scanned, when, found or not (surfaces
+             qr_scan_log.scanned_by, which the stats totals above don't) -->
+        <div class="card">
+          <div class="card-header"><div class="card-title">Recent Scans</div></div>
+          <div class="card-body" id="qr-recent-list">
+            <div style="padding:16px 0;text-align:center;font-size:.8rem;color:#9CA3AF">Loading…</div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

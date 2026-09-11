@@ -2053,9 +2053,41 @@ async function _qrRenderStats() {
     if (el('qr-stat-total'))    el('qr-stat-total').textContent    = d.total
     if (el('qr-stat-found'))    el('qr-stat-found').textContent    = d.found
     if (el('qr-stat-notfound')) el('qr-stat-notfound').textContent = d.notFound
+    _qrRenderRecent(d.recent || [])
   } catch (_) { /* non-critical — leave stats at last known value */ }
 }
 window._qrRenderStats = _qrRenderStats
+
+// Surfaces qr_scan_log.scanned_by, which used to just sit in the database
+// unread — each scan now shows who actually did it, not just the day's
+// totals.
+function _qrRenderRecent(recent) {
+  const listEl = document.getElementById('qr-recent-list')
+  if (!listEl) return
+  if (!recent.length) {
+    listEl.innerHTML = `<div style="padding:16px 0;text-align:center;font-size:.8rem;color:#9CA3AF">No scans yet today.</div>`
+    return
+  }
+  listEl.innerHTML = recent.map(s => {
+    const dt = new Date((s.scannedAt || '').replace(' ', 'T'))
+    const time = isNaN(dt) ? '' : dt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+    const statusColor = s.found ? '#16A34A' : '#DC2626'
+    const statusText  = s.found ? 'Found' : 'Not found'
+    const who = s.scannerRole ? `${esc(s.scannerName)} • ${s.scannerRole}` : esc(s.scannerName)
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F9FAFB;font-size:.78rem">
+        <div style="min-width:0">
+          <div style="color:#1C1C1C;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.patientName ? esc(s.patientName) : statusText}</div>
+          <div style="color:#9CA3AF;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Scanned by ${who}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="color:${statusColor};font-weight:600">${statusText}</div>
+          <div style="color:#9CA3AF;margin-top:1px">${time}</div>
+        </div>
+      </div>`
+  }).join('')
+}
+window._qrRenderRecent = _qrRenderRecent
 
 // ════════════════════════════════════════════════════════════════
 //  QR IMAGE UPLOAD — decode a QR from an uploaded image file
