@@ -89,14 +89,21 @@ var NON_EXAM_SERVICE_TYPES = ['Eyeglass/Contact Lens Fitting', 'Optical Frame Se
 
 var clinicInfo = {
   name: 'Cana Optical Clinic',
-  tagline: 'Clear Vision. Compassionate Care.',
+  // Matches the static text hardcoded in every public page's footer
+  // (index.html, pages/*.html) — this is the fallback shown before
+  // _syncClinicSettings() (auth.js) confirms the real DB value, so it has
+  // to be the same or saving without editing this field would silently
+  // change the live footer text.
+  tagline: 'Professional eye examinations, precision vision testing, and personalized optical care from licensed optometrists in Carmona, Cavite.',
+  // Empty by default — the public footer auto-generates "© {year} {name}.
+  // All rights reserved." on its own (applyClinicBranding(), public-nav.js)
+  // unless this is explicitly set.
+  footerCopyrightText: '',
   address: 'Unit 3 Paseo de Carmona, Brgy. Maduya, Carmona, Cavite',
   phone: '0929 663 6080',
   mobile: '0929 663 6080',
   email: 'canaopticalclinic@gmail.com',
   hours: 'Monday – Saturday: 9:00 AM – 5:00 PM',
-  tinNo: '123-456-789-000',
-  phicNo: '01-123456789-0',
   logoUrl: null,
   termsContent: null,
   appointmentPolicyContent: null

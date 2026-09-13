@@ -50,12 +50,22 @@ try {
     }
 
     // Check if the email belongs to a registered user
-    $s = $pdo->prepare('SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1');
+    $s = $pdo->prepare('SELECT id, is_active FROM users WHERE LOWER(email) = ? LIMIT 1');
     $s->execute([$email]);
     $user = $s->fetch();
 
     if (!$user) {
         jsonResponse(['success' => false, 'message' => 'This account or email doesn\'t exist. Please enter a valid email.']);
+    }
+    // An archived account (is_active = 0) keeps its email row — archiving
+    // is meant to be reversible via Restore, so the email can't just be
+    // freed the way a permanent delete does — but that also means the
+    // email still matches here. Without this check, an inactive account
+    // could still request a reset code and successfully change its own
+    // password, even though login.php would reject it right after anyway;
+    // same wording as that final gate, so the two are consistent.
+    if (!$user['is_active']) {
+        jsonResponse(['success' => false, 'message' => 'Your account is inactive. Please contact the clinic to have it reactivated.']);
     }
 
     // Block check — 1-hour ban after 10 total wrong OTP guesses

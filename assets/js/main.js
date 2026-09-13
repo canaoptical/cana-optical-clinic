@@ -1344,18 +1344,28 @@ window.mockQRSvg = mockQRSvg
 function _showRegistrationQRModal(user, tempPassword, alreadyLoggedIn = false) {
   const wrapperId = 'reg-success-qr'
   const qrHtml    = window.mockQRSvg ? window.mockQRSvg(user.qrData, 180) : ''
+  // A walk-in patient (no email given) never got a login account at all —
+  // see api/patients/create.php's own "Create login account if email
+  // provided" comment — so this modal shouldn't claim one is "now active"
+  // for them. hasAccount checks user.email directly rather than
+  // tempPassword, since a self-registered patient (auth.js) sets their
+  // own password and never gets a tempPassword either, but very much does
+  // have a real account.
+  const hasAccount = !!user.email
   showModal(`
     <div class="modal-header" style="border-bottom:none;padding-bottom:0">
       <div class="modal-title" style="display:flex;align-items:center;gap:8px;color:#059669">
         <div style="width:32px;height:32px;border-radius:50%;background:#ECFDF5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
           ${icon('check-circle','icon-sm')}
         </div>
-        Account Created!
+        ${hasAccount ? 'Account Created!' : 'Patient Registered!'}
       </div>
     </div>
     <div class="modal-body" style="text-align:center;padding-top:8px">
-      <p style="font-size:.88rem;color:#374151;margin:0 0 4px">Welcome, <strong>${user.firstName}</strong>! Your patient account is now active.</p>
-      <p style="font-size:.78rem;color:#6B7280;margin:0 0 18px">Save your unique QR code — present it at the clinic for instant check-in and profile retrieval.</p>
+      <p style="font-size:.88rem;color:#374151;margin:0 0 4px">${hasAccount
+        ? `Welcome, <strong>${user.firstName}</strong>! Your patient account is now active.`
+        : `<strong>${user.firstName}</strong>'s patient record has been created. No email was given, so no login account was set up, only staff can view and manage this record for now.`}</p>
+      <p style="font-size:.78rem;color:#6B7280;margin:0 0 18px">Save this QR code and present it at the clinic for instant check-in and profile retrieval.</p>
       <div id="${wrapperId}" style="display:inline-block;padding:16px;background:#fff;border:2px solid #E5E7EB;border-radius:12px;margin-bottom:10px">
         ${qrHtml}
       </div>
@@ -1365,6 +1375,10 @@ function _showRegistrationQRModal(user, tempPassword, alreadyLoggedIn = false) {
       <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px;font-size:.8rem;color:#92400E;text-align:left;margin-top:10px">
         <strong>Temporary Password:</strong> <code style="font-size:.85rem;background:#fff;padding:2px 6px;border-radius:4px;border:1px solid #FED7AA">${tempPassword}</code>
         <br><span style="font-size:.72rem;color:#B45309;margin-top:3px;display:block">Share this with the patient. They can change it from Settings after logging in.</span>
+      </div>` : ''}
+      ${!hasAccount ? `
+      <div style="background:#F9FAFB;border:1px solid #F0F0F2;border-radius:8px;padding:10px 14px;font-size:.76rem;color:#6B7280;text-align:left;margin-top:10px">
+        If this patient later wants online access, open Edit Patient and add an email there, which sets up their login and gives you a temporary password to share.
       </div>` : ''}
     </div>
     <div class="modal-footer" style="justify-content:center;gap:10px">
@@ -1770,7 +1784,17 @@ function _buildDashboardReportHtml() {
      onto a lonely trailing page (leaving the actual last content page
      with unused space below it) than to actually protect it from a bad
      mid-block split. */
-  .sig-block   { margin-top:32px; padding-top:16px; border-top:1px dashed #ccc; display:flex; justify-content:flex-end; }
+  /* Real signature line for whoever prepared/proofed this report to sign
+     off on — kept (not dropped to plain text) since that sign-off is the
+     point. What used to be wrong: .sig-block opened with its own dashed
+     divider immediately followed by the solid sig-line, with barely any
+     gap between them — a line sitting right above another line, with no
+     actual blank room for a pen between them. Dropped that divider
+     entirely and let margin-top alone provide real blank space before
+     the one line that matters (the solid one people actually sign on),
+     same as the Exam/Rx prints' own doctor/patient sig-line blocks
+     elsewhere in this file already reserve for their signers. */
+  .sig-block   { margin-top:48px; display:flex; justify-content:flex-end; }
   .sig-col     { text-align:center; min-width:220px; }
   .sig-line    { border-top:1px solid #111; padding-top:7px; font-size:11px; font-weight:700; text-transform:uppercase; }
   .sig-sub     { font-size:10px; color:#888; margin-top:3px; }
@@ -2232,6 +2256,58 @@ function _syncSearchEmptyState(containerId, show, kind, label) {
   }
 }
 window._syncSearchEmptyState = _syncSearchEmptyState
+
+// ════════════════════════════════════════════════════════════════
+//  FIELD-ERROR HIGHLIGHT — same red-outline convention already used on
+//  registration/login/forgot-password (.reg-input.error / .lf-input.error),
+//  now shared by the admin/staff dashboard's own modals (Add/Edit Patient,
+//  Add User, etc.) so a required-field or invalid-value error points at
+//  the actual field, not just a toast with no visual anchor.
+// ════════════════════════════════════════════════════════════════
+// A plain <input>/<textarea> IS the styled box, so `id` itself is what
+// gets .error. The custom select and DOB picker (selectFieldHtml() /
+// dobFieldHtml() above) instead render a hidden <input id> holding the
+// real value next to the actual styled box, "<id>-trigger" — so that's
+// tried first and falls back to `id` for every plain field.
+function markFieldError(id) {
+  const el = document.getElementById(id + '-trigger') || document.getElementById(id)
+  if (el) el.classList.add('error')
+}
+window.markFieldError = markFieldError
+
+function clearFieldError(id) {
+  const el = document.getElementById(id + '-trigger') || document.getElementById(id)
+  if (el) el.classList.remove('error')
+}
+window.clearFieldError = clearFieldError
+
+// Clears every error highlight currently showing inside a container
+// (typically a modal body) — call at the top of a save handler, before
+// re-validating, so a field fixed via code (not user typing) doesn't keep
+// showing red, and a fresh validation pass doesn't pile onto old marks.
+function clearFormErrors(container) {
+  const root = typeof container === 'string' ? document.getElementById(container) : container
+  if (!root) return
+  root.querySelectorAll('.form-input.error, .form-textarea.error').forEach(el => el.classList.remove('error'))
+}
+window.clearFormErrors = clearFormErrors
+
+// Modal-wide: clears a field's red highlight the moment the user starts
+// fixing it — mirrors registration's own #register-screen listener
+// (setupRegInputClear, auth.js), generalized to every modal instead of
+// one screen. Delegated on `document` since modals are re-rendered
+// on the fly (showModal()); 'input' covers typing (including into the
+// DOB picker's inner text field, which bubbles up to its trigger box),
+// 'change' covers a custom-select option pick or native date/checkbox.
+function _clearErrorOnEdit(e) {
+  const t = e.target
+  if (!t || !t.classList) return
+  if (t.classList.contains('error')) t.classList.remove('error')
+  const trigger = t.closest && t.closest('[id$="-trigger"]')
+  if (trigger && trigger.classList.contains('error')) trigger.classList.remove('error')
+}
+document.addEventListener('input',  _clearErrorOnEdit)
+document.addEventListener('change', _clearErrorOnEdit)
 
 // ════════════════════════════════════════════════════════════════
 //  BUSY-BUTTON HELPER — disable + spinner + guard against double-click
@@ -6624,16 +6700,16 @@ function openAddUserModal() {
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">First Name <span class="req">*</span></label>
           <input id="nu-first" class="form-input" placeholder="Juan"></div>
-        <div class="form-group"><label class="form-label">Middle Name</label>
+        <div class="form-group"><label class="form-label">Middle Name <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="nu-middle" class="form-input" placeholder="Santos"></div>
       </div>
       <div class="form-group"><label class="form-label">Last Name <span class="req">*</span></label>
         <input id="nu-last" class="form-input" placeholder="Dela Cruz"></div>
       <div class="form-row-2">
-        <div class="form-group"><label class="form-label">Email <span class="req">*</span></label>
+        <div class="form-group"><label class="form-label">Email <span id="nu-email-req" class="req">*</span></label>
           <input id="nu-email" type="email" class="form-input" placeholder="juan@email.com"></div>
-        <div class="form-group"><label class="form-label">Contact Number</label>
-          <input id="nu-contact" class="form-input" inputmode="numeric" maxlength="13" onkeypress="return /[0-9]/.test(event.key)" oninput="window.formatContactInput(this)" placeholder="0921-245-2834"></div>
+        <div class="form-group"><label class="form-label">Contact Number <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
+          <input id="nu-contact" class="form-input" inputmode="numeric" maxlength="13" onkeypress="return /[0-9]/.test(event.key)" oninput="window.formatContactInput(this)" placeholder="0912-345-6789"></div>
       </div>
       <div class="form-group"><label class="form-label">Role <span class="req">*</span></label>
         ${window.selectFieldHtml('nu-role', { value: 'Admin', options: ['Admin','Staff','Doctor','Patient'], onchange: 'window.onAddUserRoleChange(this.value)' })}</div>
@@ -6641,12 +6717,12 @@ function openAddUserModal() {
       <!-- Doctor-specific fields -->
       <div id="nu-doctor-fields" style="display:none;flex-direction:column;gap:14px">
         <div class="form-row-2">
-          <div class="form-group"><label class="form-label">Specialization</label>
+          <div class="form-group"><label class="form-label">Specialization <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
             <input id="nu-specialization" class="form-input" placeholder="e.g. Optometrist" value="Optometrist"></div>
-          <div class="form-group"><label class="form-label">Degree</label>
+          <div class="form-group"><label class="form-label">Degree <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
             <input id="nu-degree" class="form-input" placeholder="e.g. OD, MD" value="OD"></div>
         </div>
-        <div class="form-group"><label class="form-label">PRC License No.</label>
+        <div class="form-group"><label class="form-label">PRC License No. <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="nu-prc" class="form-input" placeholder="PRC-XXXXX"></div>
       </div>
 
@@ -6658,10 +6734,14 @@ function openAddUserModal() {
           <div class="form-group"><label class="form-label">Gender <span class="req">*</span></label>
             ${window.selectFieldHtml('nu-gender', { value: '', placeholder: 'Select gender', options: ['Male','Female','Other'] })}</div>
         </div>
-        <div class="form-group"><label class="form-label">Occupation</label>
+        <div class="form-group"><label class="form-label">Occupation <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="nu-occupation" class="form-input" placeholder="e.g. Teacher, Engineer, Student"></div>
-        <div class="form-group"><label class="form-label">Address</label>
+        <div class="form-group"><label class="form-label">Address <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="nu-address" class="form-input" placeholder="Street, City, Province"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Medical History <span style="font-size:.75rem;color:#9CA3AF;font-weight:400">(optional)</span></label>
+          <textarea id="nu-medical-history" class="form-textarea" rows="3" placeholder="Conditions, allergies, ongoing medications, past eye surgeries, etc."></textarea>
+          <p style="margin:6px 0 0;font-size:.72rem;color:#9CA3AF">Shown to the doctor during examinations so they have it in view while examining.</p>
+        </div>
       </div>
 
       <div id="nu-pass-group">
@@ -6690,6 +6770,22 @@ function onAddUserRoleChange(role) {
   if (docFields) docFields.style.display = role === 'Doctor'  ? 'flex' : 'none'
   if (patFields) patFields.style.display = role === 'Patient' ? 'flex' : 'none'
   if (passGroup) passGroup.style.display = role === 'Patient' ? 'none' : ''
+  // Patient role hits the same api/patients/create.php endpoint and pops
+  // the same QR modal as the dedicated Add Patient form (see doAddUser()
+  // below) — label the button to match so it isn't misleading about what
+  // happens next.
+  const saveBtn = document.getElementById('nu-save-btn')
+  if (saveBtn) saveBtn.textContent = role === 'Patient' ? 'Register Patient & Generate QR' : 'Create Account'
+  // Email is the only login identifier for Admin/Staff/Doctor, so it's
+  // required for those — but a Patient can be a record-only walk-in with
+  // no login account at all (matches the dedicated Add Patient modal,
+  // where Email has always been optional), so the indicator flips to
+  // match whichever rule actually applies to the selected role.
+  const emailReq = document.getElementById('nu-email-req')
+  if (emailReq) {
+    if (role === 'Patient') { emailReq.className = ''; emailReq.style.cssText = 'font-weight:400;color:#9CA3AF'; emailReq.textContent = '(optional)' }
+    else { emailReq.className = 'req'; emailReq.style.cssText = ''; emailReq.textContent = '*' }
+  }
   window.updateNuSaveGate()
 }
 window.onAddUserRoleChange = onAddUserRoleChange
@@ -6711,6 +6807,7 @@ window.updateNuSaveGate = updateNuSaveGate
 
 async function doAddUser() {
   const gv    = id => (document.getElementById(id)||{}).value?.trim() || ''
+  clearFormErrors('modal-root')
   const first   = gv('nu-first')
   const last    = gv('nu-last')
   const email   = gv('nu-email')
@@ -6718,19 +6815,40 @@ async function doAddUser() {
   const role    = gv('nu-role') || 'Admin'
   const pass    = gv('nu-pass')
 
-  if (!first || !last || !email) { toast('Please fill in all required fields.', 'error'); return }
+  // Email is required for every role except Patient — a walk-in patient
+  // with no email deliberately gets a clinical record with no login
+  // account at all (api/patients/create.php only creates a users row when
+  // an email is actually given), same as the dedicated Add Patient modal.
+  // Admin/Staff/Doctor accounts always need one, since email is their only
+  // login identifier.
+  if (!first) markFieldError('nu-first')
+  if (!last)  markFieldError('nu-last')
+  if (!first || !last) { toast('First and last name are required.', 'error'); return }
+  if (role !== 'Patient' && !email) { markFieldError('nu-email'); toast('Email is required.', 'error'); return }
   // Contact/Address aren't required here, but if something was typed it
   // has to actually look like a real one — same rules as registration.
-  if (contact && !window.isValidContact(contact)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
+  if (contact && !window.isValidContact(contact)) { markFieldError('nu-contact'); toast('Please enter a valid 11-digit contact number.', 'error'); return }
   const nuAddress = gv('nu-address')
-  if (role === 'Patient' && nuAddress && !window.looksLikeAddress(nuAddress)) { toast('Please enter a complete address.', 'error'); return }
+  if (role === 'Patient' && nuAddress && !window.looksLikeAddress(nuAddress)) { markFieldError('nu-address'); toast('Please enter a complete address.', 'error'); return }
+  // Patient role hits the same backend endpoint as the dedicated Add
+  // Patient modal, which requires gender + dob — only checked server-side
+  // before, so this could round-trip a failed request for nothing.
+  if (role === 'Patient') {
+    const nuGender = gv('nu-gender'), nuDob = gv('nu-dob')
+    if (!nuGender || !nuDob) {
+      if (!nuGender) markFieldError('nu-gender')
+      if (!nuDob)    markFieldError('nu-dob')
+      toast('Gender and date of birth are required.', 'error')
+      return
+    }
+  }
   // Password policy is enforced live via the checklist and the Create
   // Account button is disabled until it's met — this is just a safety
   // net in case the button's disabled state was somehow bypassed.
-  if (role !== 'Patient' && !window.pwPolicyValid(pass)) return
+  if (role !== 'Patient' && !window.pwPolicyValid(pass)) { markFieldError('nu-pass'); return }
 
   const btn = document.getElementById('nu-save-btn')
-  if (btn) { btn.disabled = true; btn.textContent = 'Creating…' }
+  if (_btnBusy(btn, 'primary', role === 'Patient' ? 'Registering…' : 'Creating…')) return
 
   try {
     let endpoint, body
@@ -6744,6 +6862,7 @@ async function doAddUser() {
         dob: gv('nu-dob'), gender: gv('nu-gender'),
         address: gv('nu-address'),
         occupation: gv('nu-occupation'),
+        medicalHistory: gv('nu-medical-history'),
       }
     } else {
       endpoint = 'api/users/create.php'
@@ -6778,7 +6897,13 @@ async function doAddUser() {
     renderPage()
 
     if (role === 'Patient') {
-      setTimeout(() => window._showRegistrationQRModal(data.patient, data.tempPassword || null), 150)
+      // alreadyLoggedIn:true — this is staff/admin creating a patient on
+      // someone else's behalf, not that patient registering themselves.
+      // Without it, a walk-in patient with no email (so no tempPassword
+      // either) fell into the modal's "not logged in yet" branch, which
+      // showed "Sign In to Continue" and sent the STAFF member's own
+      // session to the login screen for an account that doesn't even exist.
+      setTimeout(() => window._showRegistrationQRModal(data.patient, data.tempPassword || null, true), 150)
     } else {
       let msg = `Account created. ${name} can now log in.`
       if (data.tempPassword) msg += ` Temp password: ${data.tempPassword}`
@@ -6788,7 +6913,7 @@ async function doAddUser() {
   } catch(e) {
     toast('Network error. Please try again.', 'error')
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Create Account' }
+    _btnIdle(btn)
   }
 }
 
@@ -6805,16 +6930,16 @@ function editUserModal(id, role) {
     </div>
     <div class="modal-body">
       <div class="form-row-2">
-        <div class="form-group"><label class="form-label">First Name</label>
+        <div class="form-group"><label class="form-label">First Name <span class="req">*</span></label>
           <input id="eu-first" class="form-input" value="${u.firstName || ''}"></div>
-        <div class="form-group"><label class="form-label">Middle Name</label>
+        <div class="form-group"><label class="form-label">Middle Name <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="eu-middle" class="form-input" value="${u.middleName || ''}"></div>
       </div>
-      <div class="form-group"><label class="form-label">Last Name</label>
+      <div class="form-group"><label class="form-label">Last Name <span class="req">*</span></label>
         <input id="eu-last" class="form-input" value="${u.lastName || ''}"></div>
-      <div class="form-group"><label class="form-label">Email</label>
+      <div class="form-group"><label class="form-label">Email <span class="req">*</span></label>
         <input id="eu-email" type="email" class="form-input" value="${u.email || ''}"></div>
-      <div class="form-group"><label class="form-label">Contact</label>
+      <div class="form-group"><label class="form-label">Contact <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
         <input id="eu-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${u.contact || ''}"></div>
       ${role === 'Doctor' ? `
       <div class="form-row-2">
@@ -6927,11 +7052,17 @@ async function doEditUser(id, role) {
   const u = (pool[role] || []).find(u => u.id === id)
   if (!u) return
 
-  const fn      = (document.getElementById('eu-first')   || {}).value?.trim() || u.firstName
+  // No "|| u.x" fallback on the required fields below anymore — that used
+  // to mean clearing First/Last Name or Email and hitting Save silently
+  // reverted to the old value with zero feedback, instead of either saving
+  // the change or telling the admin why it couldn't. Contact stays a
+  // genuine optional field (its own "|| u.contact" fallback was blocking
+  // ever actually clearing it, the one case where reverting was wrong).
+  const fn      = (document.getElementById('eu-first')   || {}).value?.trim()
   const mn      = (document.getElementById('eu-middle')  || {}).value?.trim() ?? (u.middleName || '')
-  const ln      = (document.getElementById('eu-last')    || {}).value?.trim() || u.lastName
-  const email   = (document.getElementById('eu-email')   || {}).value?.trim() || u.email
-  const contact = (document.getElementById('eu-contact') || {}).value?.trim() || u.contact
+  const ln      = (document.getElementById('eu-last')    || {}).value?.trim()
+  const email   = (document.getElementById('eu-email')   || {}).value?.trim()
+  const contact = (document.getElementById('eu-contact') || {}).value?.trim()
   const status  = (document.getElementById('eu-status')  || {}).value         || u.status
   const specialization = document.getElementById('eu-specialization')?.value?.trim() || ''
   const prcLicense      = document.getElementById('eu-prc-license')?.value?.trim()    || ''
@@ -6943,6 +7074,8 @@ async function doEditUser(id, role) {
   const newPw   = document.getElementById('eu-new-pw')?.value  || ''
   const cfPw    = document.getElementById('eu-confirm-pw')?.value || ''
 
+  if (!fn || !ln) { toast('First and last name are required.', 'error'); return }
+  if (!email)     { toast('Email is required.', 'error'); return }
   // Password policy/match is enforced live (checklist + inline hint) and
   // the Save button is disabled until valid — this is just a safety net.
   if (newPw && (!window.pwPolicyValid(newPw) || newPw !== cfPw)) return
@@ -7161,16 +7294,16 @@ function openAddPatientModal() {
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">First Name <span class="req">*</span></label>
           <input id="ap-first" class="form-input" placeholder="Juan"></div>
-        <div class="form-group"><label class="form-label">Middle Name</label>
+        <div class="form-group"><label class="form-label">Middle Name <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="ap-middle" class="form-input" placeholder="Santos"></div>
       </div>
       <div class="form-group"><label class="form-label">Last Name <span class="req">*</span></label>
         <input id="ap-last" class="form-input" placeholder="Dela Cruz"></div>
       <div class="form-row-2">
-        <div class="form-group"><label class="form-label">Email</label>
+        <div class="form-group"><label class="form-label">Email <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input type="email" id="ap-email" class="form-input" placeholder="juan@email.com"></div>
-        <div class="form-group"><label class="form-label">Contact Number</label>
-          <input id="ap-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" placeholder="0921-245-2834"></div>
+        <div class="form-group"><label class="form-label">Contact Number <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
+          <input id="ap-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" placeholder="0912-345-6789"></div>
       </div>
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">Date of Birth <span class="req">*</span></label>
@@ -7178,9 +7311,9 @@ function openAddPatientModal() {
         <div class="form-group"><label class="form-label">Gender <span class="req">*</span></label>
           ${window.selectFieldHtml('ap-gender', { value: '', placeholder: 'Select gender', options: ['Male','Female','Other'] })}</div>
       </div>
-      <div class="form-group"><label class="form-label">Occupation</label>
+      <div class="form-group"><label class="form-label">Occupation <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
         <input id="ap-occupation" class="form-input" placeholder="e.g. Teacher, Engineer, Student"></div>
-      <div class="form-group"><label class="form-label">Address</label>
+      <div class="form-group"><label class="form-label">Address <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
         <input id="ap-address" class="form-input" placeholder="Street, City, Province"></div>
       <div class="form-group" style="margin-bottom:0"><label class="form-label">Medical History <span style="font-size:.75rem;color:#9CA3AF;font-weight:400">(optional)</span></label>
         <textarea id="ap-medical-history" class="form-textarea" rows="3" placeholder="Conditions, allergies, ongoing medications, past eye surgeries, etc."></textarea>
@@ -7189,23 +7322,35 @@ function openAddPatientModal() {
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button id="ap-save-btn" class="btn-primary" onclick="window.doAddPatient()">
-        ${icon('plus','icon-sm')} Register Patient &amp; Generate QR
+      <button id="ap-save-btn" class="btn-primary" onclick="window.doAddPatient(this)">
+        Register Patient &amp; Generate QR
       </button>
     </div>`, 'modal-lg')
 }
 
-async function doAddPatient() {
+async function doAddPatient(btn) {
   const gv    = id => (document.getElementById(id)||{}).value?.trim() || ''
-  const first = gv('ap-first'), last = gv('ap-last')
-  if (!first || !last) { toast('First and last name are required.', 'error'); return }
+  clearFormErrors('modal-root')
+  const first  = gv('ap-first'), last = gv('ap-last')
+  const gender = gv('ap-gender'), dob = gv('ap-dob')
+  // Matches api/patients/create.php's own required-field check — used to
+  // only validate first/last here, silently relying on the backend to
+  // reject a missing gender/dob after a real round-trip; now caught (and
+  // highlighted) client-side too, same as every other field below.
+  if (!first || !last || !gender || !dob) {
+    if (!first)  markFieldError('ap-first')
+    if (!last)   markFieldError('ap-last')
+    if (!gender) markFieldError('ap-gender')
+    if (!dob)    markFieldError('ap-dob')
+    toast('First name, last name, gender and date of birth are required.', 'error')
+    return
+  }
   const apContact = gv('ap-contact')
-  if (apContact && !window.isValidContact(apContact)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
+  if (apContact && !window.isValidContact(apContact)) { markFieldError('ap-contact'); toast('Please enter a valid 11-digit contact number.', 'error'); return }
   const apAddress = gv('ap-address')
-  if (apAddress && !window.looksLikeAddress(apAddress)) { toast('Please enter a complete address.', 'error'); return }
+  if (apAddress && !window.looksLikeAddress(apAddress)) { markFieldError('ap-address'); toast('Please enter a complete address.', 'error'); return }
 
-  const btn = document.getElementById('ap-save-btn')
-  if (btn) { btn.disabled = true; btn.innerHTML = `${icon('loader','icon-sm')} Registering…` }
+  if (_btnBusy(btn, 'primary', 'Registering…')) return
 
   try {
     const r = await fetch('api/patients/create.php', {
@@ -7233,11 +7378,15 @@ async function doAddPatient() {
       timestamp: nowTimestamp(), type:'patient' })
     closeModal()
     renderPage()
-    setTimeout(() => window._showRegistrationQRModal(p, d.tempPassword || null), 150)
+    // alreadyLoggedIn:true — same reasoning as doAddUser()'s Patient
+    // branch above: this is staff registering a patient, not the patient
+    // registering themselves, so a no-email walk-in must never send the
+    // staff member's own session to the login screen.
+    setTimeout(() => window._showRegistrationQRModal(p, d.tempPassword || null, true), 150)
   } catch (_) {
     toast('Network error — please try again.', 'error')
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = `${icon('plus','icon-sm')} Register Patient & Generate QR` }
+    _btnIdle(btn)
   }
 }
 
@@ -7281,12 +7430,12 @@ function openEditPatientModal(patientId) {
     </div>
     <div class="modal-body">
       <div class="form-row-2">
-        <div class="form-group"><label class="form-label">First Name</label>
+        <div class="form-group"><label class="form-label">First Name <span class="req">*</span></label>
           <input id="ep-first" class="form-input" value="${p.firstName}"></div>
-        <div class="form-group"><label class="form-label">Middle Name</label>
+        <div class="form-group"><label class="form-label">Middle Name <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
           <input id="ep-middle" class="form-input" value="${p.middleName || ''}"></div>
       </div>
-      <div class="form-group"><label class="form-label">Last Name</label>
+      <div class="form-group"><label class="form-label">Last Name <span class="req">*</span></label>
         <input id="ep-last" class="form-input" value="${p.lastName}"></div>
       <div class="form-row-2">
         <div class="form-group"><label class="form-label">Date of Birth</label>
@@ -7295,12 +7444,14 @@ function openEditPatientModal(patientId) {
           ${window.selectFieldHtml('ep-gender', { value: p.gender || '', options: ['Male','Female','Other'] })}</div>
       </div>
       <p style="font-size:.74rem;color:#9CA3AF;margin:-8px 0 14px">Locked on the patient's own Settings page, only admins can update these.</p>
-      <div class="form-group"><label class="form-label">Contact</label>
+      <div class="form-group"><label class="form-label">Contact <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
         <input id="ep-contact" class="form-input" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${p.contact}"></div>
-      <div class="form-group"><label class="form-label">Email</label>
+      <div class="form-group"><label class="form-label">Email ${p.email ? '<span class="req">*</span>' : '<span style="font-weight:400;color:#9CA3AF">(optional)</span>'}</label>
         <input type="email" id="ep-email" class="form-input" value="${p.email}"
-               ${!p.email ? 'disabled title="This patient has no login account — email can\'t be set here."' : ''}></div>
-      <div class="form-group"><label class="form-label">Address</label>
+               title="${p.email ? "This patient already has a login account, so email is required and can't be cleared here." : ''}">
+        ${!p.email ? `<div style="font-size:.72rem;color:#9CA3AF;margin-top:5px">This patient has no login account yet. Setting an email here creates one and generates a temporary password.</div>` : ''}
+      </div>
+      <div class="form-group"><label class="form-label">Address <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
         <input id="ep-address" class="form-input" value="${p.address}"></div>
       ${isAdmin ? `<div class="form-group"><label class="form-label">Status</label>
         ${window.selectFieldHtml('ep-status', { value: p.status || 'active', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] })}</div>` : ''}
@@ -7381,22 +7532,34 @@ function openEditPatientModal(patientId) {
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button id="ep-save-btn" class="btn-primary" onclick="window.doEditPatient('${patientId}')">Save Changes</button>
+      <button id="ep-save-btn" class="btn-primary" onclick="window.doEditPatient('${patientId}', this)">Save Changes</button>
     </div>`)
 }
 
-async function doEditPatient(patientId) {
+async function doEditPatient(patientId, btn) {
   const p  = patients.find(p => p.id === patientId)
   const gv = id => (document.getElementById(id)||{}).value?.trim() || ''
   if (!p) return
 
+  clearFormErrors('modal-root')
   const firstName = gv('ep-first')
   const lastName  = gv('ep-last')
+  if (!firstName) markFieldError('ep-first')
+  if (!lastName)  markFieldError('ep-last')
   if (!firstName || !lastName) { toast('First and last name are required.', 'error'); return }
+  // Email is that account's only login identifier — once a patient has
+  // one (p.email, captured before this form could touch it), blanking it
+  // out here isn't a safe "remove their login" action (it'd leave a
+  // users row with an empty, non-unique email instead of actually
+  // deleting the account), so it's required to stay set for as long as
+  // that login account exists. A patient who never had one keeps not
+  // needing one — same walk-in design as Add Patient.
+  const epEmail = gv('ep-email')
+  if (p.email && !epEmail) { markFieldError('ep-email'); toast('This patient has an active login account; email is required and can\'t be removed here.', 'error'); return }
   const epContact = gv('ep-contact')
-  if (epContact && !window.isValidContact(epContact)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
+  if (epContact && !window.isValidContact(epContact)) { markFieldError('ep-contact'); toast('Please enter a valid 11-digit contact number.', 'error'); return }
   const epAddress = gv('ep-address')
-  if (epAddress && !window.looksLikeAddress(epAddress)) { toast('Please enter a complete address.', 'error'); return }
+  if (epAddress && !window.looksLikeAddress(epAddress)) { markFieldError('ep-address'); toast('Please enter a complete address.', 'error'); return }
 
   // Optional password change
   const np  = (document.getElementById('ep-newpass')  || {}).value || ''
@@ -7416,17 +7579,30 @@ async function doEditPatient(patientId) {
     ...(statusEl ? { status: statusEl.value } : {})
   }
 
+  // Disables + spins the button for the whole save, including the
+  // possible "grant this patient a login + send them a welcome email"
+  // step below — without this, a fast double-click/double-tap could fire
+  // two of those, which would mean two accounts racing to claim the same
+  // email, or the welcome email going out twice.
+  if (_btnBusy(btn, 'primary', 'Saving…')) return
+
+  let updateResp = null
   try {
     const r = await fetch('api/patients/admin_update.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-    const d = await r.json()
-    if (!d.success) { toast(d.message || 'Could not update patient.', 'error'); return }
+    updateResp = await r.json()
+    if (!updateResp.success) { toast(updateResp.message || 'Could not update patient.', 'error'); _btnIdle(btn); return }
   } catch (_) {
     toast('Network error — could not update patient.', 'error')
+    _btnIdle(btn)
     return
   }
+  // Only set when this save just gave a previously record-only (walk-in)
+  // patient their first login account — admin_update.php only generates
+  // one when email is provided AND the patient had no user_id before.
+  const grantedTempPassword = updateResp.tempPassword || null
 
   // Reset password if new password was provided
   if (np) {
@@ -7436,9 +7612,10 @@ async function doEditPatient(patientId) {
         body: JSON.stringify({ profileId: patientId, role: 'Patient', newPassword: np })
       })
       const d = await r.json()
-      if (!d.success) { toast(d.message || 'Profile saved but password could not be updated.', 'error'); return }
+      if (!d.success) { toast(d.message || 'Profile saved but password could not be updated.', 'error'); _btnIdle(btn); return }
     } catch (_) {
       toast('Profile saved but password reset failed (network error).', 'error')
+      _btnIdle(btn)
       return
     }
   }
@@ -7450,12 +7627,13 @@ async function doEditPatient(patientId) {
   const newFullName = fmtFullName(firstName, payload.middleName, lastName)
   const diffParts = _logDiffParts([
     ['name', p.name, newFullName],
-    ['email', p.email, (payload.email && p.email) ? payload.email : p.email],
+    ['email', p.email, payload.email || p.email],
     ['contact', p.contact, payload.contact],
     ['gender', p.gender, payload.gender || p.gender],
     ['date of birth', p.dob, payload.dob || p.dob],
     ['status', p.status, payload.status || p.status],
   ])
+  if (grantedTempPassword) diffParts.push('login account created')
   const otherChanged = [
     payload.address !== p.address,
     payload.occupation !== p.occupation,
@@ -7473,7 +7651,7 @@ async function doEditPatient(patientId) {
   // or the UI keeps showing the pre-edit age until a full reload.
   if (payload.dob) { p.dob = payload.dob; p.age = ageFromDob(payload.dob) }
   p.contact       = payload.contact
-  if (payload.email && p.email) p.email = payload.email
+  if (payload.email) p.email = payload.email
   p.address       = payload.address
   p.occupation    = payload.occupation
   p.medicalHistory = payload.medicalHistory
@@ -7484,8 +7662,36 @@ async function doEditPatient(patientId) {
     timestamp: nowTimestamp(), type:'patient' })
 
   closeModal()
-  toast(np ? 'Patient info and password updated.' : 'Patient info updated.')
   renderPage()
+
+  if (grantedTempPassword) {
+    // A walk-in patient just got their first login account from this save
+    // — the temp password only exists in this one response, so it has to
+    // be shown now (same pattern as the Add Patient QR modal's own
+    // Temporary Password callout) or it's gone for good.
+    showModal(`
+      <div class="modal-header">
+        <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:50%;background:#ECFDF5;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#059669">
+            ${icon('check-circle','icon-sm')}
+          </div>
+          Login Account Created
+        </div>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:.88rem;color:#374151;margin:0 0 14px">${esc(p.name)} can now sign in and use their patient portal, using this email and temporary password:</p>
+        <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;font-size:.85rem;color:#92400E">
+          <div style="margin-bottom:6px"><strong>Email:</strong> ${esc(p.email)}</div>
+          <div><strong>Temporary Password:</strong> <code style="font-size:.9rem;background:#fff;padding:2px 6px;border-radius:4px;border:1px solid #FED7AA">${grantedTempPassword}</code></div>
+        </div>
+        <p style="font-size:.78rem;color:#9CA3AF;margin:12px 0 0">Share this with the patient. They can change it from Settings after signing in.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="window.closeModal()">Done</button>
+      </div>`)
+  } else {
+    toast(np ? 'Patient info and password updated.' : 'Patient info updated.')
+  }
 }
 
 window._toggleEpPwReset = function() {
@@ -8394,11 +8600,93 @@ window.viewArchivedRecord = viewArchivedRecord
 // ════════════════════════════════════════════════════════════════
 //  SETTINGS — SAVE CLINIC INFO
 // ════════════════════════════════════════════════════════════════
+// Live mock of the actual public-page footer (#footer/.footer-* rules,
+// public.css; applyClinicBranding(), public-nav.js) — reads straight from
+// the Clinic Information form's current field values (not saved state),
+// so admin sees exactly what a visitor's footer will look like before
+// clicking Save. Every measurement below (grid columns, gaps, padding,
+// font sizes, icon strokes) is copied from those exact CSS rules rather
+// than approximated, so this really is the same layout, not a rough mock.
+function _ciUpdateFooterPreview() {
+  const box = document.getElementById('ci-footer-preview')
+  if (!box) return
+  const gv = id => (document.getElementById(id)?.value || '').trim()
+  const name      = gv('ci-name')      || clinicInfo.name || 'Cana Optical Clinic'
+  const tagline   = gv('ci-tagline')
+  const address   = gv('ci-address')
+  const phone     = gv('ci-phone')
+  const email     = gv('ci-email')
+  const hours     = gv('ci-hours')
+  const copyright = gv('ci-copyright') || `© ${new Date().getFullYear()} ${esc(name)}. All rights reserved.`
+
+  // Same source file the real footer uses — .footer-logo-img applies no
+  // border-radius of its own; the circular look comes from the PNG itself
+  // (a white disc with the logo mark on transparent), so reproducing it
+  // here just means matching that CSS exactly, not forcing a circle.
+  // window._clinicLogoUrl first, not clinicInfo.logoUrl — every other logo
+  // reference in the app (topbar, sidebar, print letterheads) already
+  // reads that instead, since it's the one that actually gets a fresh
+  // cache-busting URL (or an instant local blob preview, mid-upload) the
+  // moment the logo changes. upload_logo.php reuses the exact same
+  // filename on every upload (clinic-logo.png stays clinic-logo.png), so
+  // reading clinicInfo.logoUrl's plain, un-busted URL here made this the
+  // one spot still showing the browser's stale cached image.
+  const logoSrc = window._clinicLogoUrl || clinicInfo.logoUrl || 'assets/images/logo/clinic-logo.png'
+
+  // Exact SVGs from .footer-info (index.html/pages/*.html), same stroke
+  // color (--orange, public.css) and 14px sizing.
+  const ICON = {
+    pin:   '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.24h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.78a16 16 0 0 0 6.29 6.29l.94-.94a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    mail:  '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  }
+  const infoIcon = key => `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#E8891C;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:3px">${ICON[key]}</svg>`
+  const infoRow = (key, text) => text ? `<li style="display:grid;grid-template-columns:14px 1fr;gap:10px;align-items:start">${infoIcon(key)}<span style="font-size:.8rem;color:rgba(255,255,255,.55);line-height:1.55">${esc(text)}</span></li>` : ''
+
+  box.innerHTML = `
+    <div style="background:#0f0f14;border-top:1px solid rgba(255,255,255,.07)">
+      <div style="max-width:1200px;margin:0 auto;padding:52px 48px 44px;display:grid;grid-template-columns:1.6fr 1fr 1.5fr;gap:48px">
+        <div>
+          <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:14px">
+            <img src="${logoSrc}" alt="" style="height:34px;width:34px;object-fit:contain">
+            <div style="font-size:1rem;font-weight:700;color:#fff;line-height:1;letter-spacing:-.01em">${esc(name)}</div>
+          </div>
+          ${tagline ? `<p style="font-size:.8rem;color:rgba(255,255,255,.45);line-height:1.75;max-width:300px;margin:0">${esc(tagline)}</p>` : ''}
+        </div>
+        <div>
+          <div style="font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#E8891C;margin-bottom:18px">Quick Links</div>
+          <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:11px">
+            <li style="font-size:.82rem;color:rgba(255,255,255,.55)">Home</li>
+            <li style="font-size:.82rem;color:rgba(255,255,255,.55)">Services</li>
+            <li style="font-size:.82rem;color:rgba(255,255,255,.55)">Doctors</li>
+            <li style="font-size:.82rem;color:rgba(255,255,255,.55)">Contact</li>
+            <li style="font-size:.82rem"><span style="color:#E8891C">Book Now</span></li>
+          </ul>
+        </div>
+        <div>
+          <div style="font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#E8891C;margin-bottom:18px">Contact Us</div>
+          <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:13px">
+            ${infoRow('pin', address)}
+            ${infoRow('phone', phone)}
+            ${infoRow('mail', email)}
+            ${infoRow('clock', hours)}
+          </ul>
+        </div>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,.07);padding:18px 48px;text-align:center">
+        <span style="font-size:.72rem;color:rgba(255,255,255,.3)">${copyright}</span>
+      </div>
+    </div>`
+}
+window._ciUpdateFooterPreview = _ciUpdateFooterPreview
+
 function saveClinicInfo() {
   const gv = id => (document.getElementById(id)?.value || '').trim()
   const name    = gv('ci-name')
   const phone   = gv('ci-phone')
   const address = gv('ci-address')
+  const tagline = gv('ci-tagline')
   const email   = gv('ci-email')
   const hours   = gv('ci-hours')
   const _mapRaw = gv('ci-map-embed')
@@ -8406,9 +8694,14 @@ function saveClinicInfo() {
   const mapEmbedUrl = _mapSrcMatch ? _mapSrcMatch[1] : (_mapRaw.startsWith('http') ? _mapRaw : null)
   const foundedYearRaw = parseInt(gv('ci-founded-year'), 10)
   const foundedYear = foundedYearRaw >= 1900 && foundedYearRaw <= new Date().getFullYear() ? foundedYearRaw : null
+  const copyright = gv('ci-copyright')
 
   if (!name)    { toast('Clinic name is required.', 'error'); return }
+  if (!phone)   { toast('Contact number is required.', 'error'); return }
+  if (!address) { toast('Clinic address is required.', 'error'); return }
   if (!email)   { toast('Email address is required.', 'error'); return }
+  if (!hours)   { toast('Operating hours are required.', 'error'); return }
+  if (!window.isValidContact(phone)) { toast('Please enter a valid 11-digit contact number.', 'error'); return }
 
   // Snapshotted before overwriting clinicInfo.* below, so the log line can
   // show exactly what changed (old -> new).
@@ -8419,6 +8712,8 @@ function saveClinicInfo() {
     ['email', clinicInfo.email, email],
     ['hours', clinicInfo.hours, hours],
     ['founded year', clinicInfo.foundedYear, foundedYear || clinicInfo.foundedYear],
+    ['footer tagline', clinicInfo.tagline, tagline || clinicInfo.tagline],
+    ['footer copyright text', clinicInfo.footerCopyrightText, copyright],
   ])
 
   clinicInfo.name = name
@@ -8429,8 +8724,11 @@ function saveClinicInfo() {
   clinicInfo.hours       = hours
   clinicInfo.mapEmbedUrl = mapEmbedUrl
   if (foundedYear) clinicInfo.foundedYear = foundedYear
+  if (tagline) clinicInfo.tagline = tagline
+  clinicInfo.footerCopyrightText = copyright
 
-  const body = { name, phone, address, email, hours }
+  const body = { name, phone, address, email, hours, footerCopyrightText: copyright }
+  if (tagline) body.tagline = tagline
   if (mapEmbedUrl !== null) body.mapEmbedUrl = mapEmbedUrl
   if (foundedYear) body.foundedYear = foundedYear
 
@@ -8514,7 +8812,7 @@ function savePrivacyContent() {
 window.savePrivacyContent = savePrivacyContent
 
 // ════════════════════════════════════════════════════════════════
-//  SECURITY & SIGN-IN (Active Sessions) — Settings > Security & Sign-in,
+//  SESSIONS & SIGN-IN (Active Sessions) — Settings > Sessions & Sign-in,
 //  every role, reached via its own dedicated sidebar entry (router.js
 //  SIDEBAR_CONFIG) — not a card duplicated inside My Profile too.
 //  Multi-device sign-in is NOT restricted (the same account can stay
@@ -12547,27 +12845,69 @@ async function handleLogoUpload(input, previewId) {
   const file = input.files[0]
   if (!file) return
 
+  // Instant local preview — same URL.createObjectURL() pattern the
+  // profile-photo cropper already uses (_uploadPhotoBlob) — shows the
+  // picked file everywhere the logo appears (sidebar, topbar, favicon,
+  // login/loading screens, and the Footer Preview below) right away
+  // instead of only after the upload round-trip finishes. Matches how
+  // the Footer Tagline/Copyright fields right above already preview
+  // live as you type, so the whole panel now feels consistently "live".
+  // Dimmed while the real upload is still in flight, as a light busy
+  // cue; restored to full opacity once the server confirms (or reverted
+  // back to the previous logo if the upload actually fails).
+  const previewUrl = URL.createObjectURL(file)
+  const el = document.getElementById(previewId)
+  const prevSrc = el ? el.src : null
+  if (el) { el.src = previewUrl; el.style.opacity = '.5' }
+  window._clinicLogoUrl = previewUrl
+  syncLogoImages(previewUrl)
+  renderSidebar()
+  renderTopbar()
+  if (window._ciUpdateFooterPreview) window._ciUpdateFooterPreview()
+
   const formData = new FormData()
   formData.append('logo', file)
 
   try {
     const r = await fetch('api/clinic/upload_logo.php', { method: 'POST', body: formData })
     const d = await r.json()
-    if (!d.success) { toast(d.message || 'Could not upload logo.', 'error'); return }
+    URL.revokeObjectURL(previewUrl)
+    if (!d.success) {
+      toast(d.message || 'Could not upload logo.', 'error')
+      // Revert every spot the instant preview touched back to the last
+      // real logo — otherwise a failed upload would leave the picked
+      // (never actually saved) file showing as if it had worked.
+      const revertUrl = clinicInfo.logoUrl || 'assets/images/logo/clinic-logo.png'
+      window._clinicLogoUrl = clinicInfo.logoUrl || null
+      if (el) { el.src = prevSrc || revertUrl; el.style.opacity = '1' }
+      syncLogoImages(revertUrl)
+      renderSidebar()
+      renderTopbar()
+      if (window._ciUpdateFooterPreview) window._ciUpdateFooterPreview()
+      return
+    }
     clinicInfo.logoUrl = d.logoUrl          // clean URL for DB/form state
     const bust = d.logoUrl + '?t=' + Date.now()
     window._clinicLogoUrl = bust            // busted URL so renderTopbar() always shows fresh image
-    const el = document.getElementById(previewId)
     if (el) { el.src = bust; el.style.opacity = '1' }
     syncLogoImages(bust)
     renderSidebar()
     renderTopbar()
+    if (window._ciUpdateFooterPreview) window._ciUpdateFooterPreview()
     // Notify other open tabs (index.html, public pages) via storage event
     localStorage.setItem('_canaopticalclinic_logo_url', bust)
     addActivityLog({ id:'L'+Date.now(), user: state.user.name, role: state.role,
       action: 'Updated clinic logo', timestamp: nowTimestamp(), type:'settings' })
     toast('Logo updated.', 'success')
   } catch (_) {
+    URL.revokeObjectURL(previewUrl)
+    const revertUrl = clinicInfo.logoUrl || 'assets/images/logo/clinic-logo.png'
+    window._clinicLogoUrl = clinicInfo.logoUrl || null
+    if (el) { el.src = prevSrc || revertUrl; el.style.opacity = '1' }
+    syncLogoImages(revertUrl)
+    renderSidebar()
+    renderTopbar()
+    if (window._ciUpdateFooterPreview) window._ciUpdateFooterPreview()
     toast('Network error — could not upload logo.', 'error')
   }
 }

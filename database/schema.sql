@@ -507,12 +507,15 @@ CREATE TABLE IF NOT EXISTS `clinic_settings` (
   `id`                            TINYINT UNSIGNED NOT NULL,
   `name`                          VARCHAR(150) NOT NULL DEFAULT 'Cana Optical Clinic',
   `tagline`                       VARCHAR(255) NULL DEFAULT NULL,
+  -- Custom footer copyright line, e.g. "© 2026 Cana Optical Clinic Inc.
+  -- All rights reserved." — NULL means the public pages keep auto-
+  -- generating "© {current year} {name}. All rights reserved." instead
+  -- (applyClinicBranding(), public-nav.js).
+  `footer_copyright_text`         VARCHAR(255) NULL DEFAULT NULL,
   `address`                       VARCHAR(255) NULL DEFAULT NULL,
   `phone`                         VARCHAR(30)  NULL DEFAULT NULL,
   `email`                         VARCHAR(150) NULL DEFAULT NULL,
   `hours`                         VARCHAR(150) NULL DEFAULT NULL,
-  `tin_no`                        VARCHAR(50)  NULL DEFAULT NULL,
-  `phic_no`                       VARCHAR(50)  NULL DEFAULT NULL,
   `logo_url`                      VARCHAR(255) NULL DEFAULT NULL,
   `default_duration`              VARCHAR(20)  NOT NULL DEFAULT '45 min',
   `max_advance_booking`           VARCHAR(20)  NOT NULL DEFAULT '3 months',
@@ -845,5 +848,29 @@ CREATE TABLE IF NOT EXISTS `about_gallery` (
 --    the frontend can attribute it correctly instead of guessing. Existing
 --    database:
 --    ALTER TABLE `users` ADD COLUMN `password_changed_by` ENUM('admin','staff','doctor','patient') NULL DEFAULT NULL AFTER `password_hash`;
+--    `blood_type`/`optical_history` had been unused in every bit of app
+--    code for a while (medical_history's own re-add above already covers
+--    that need) but the columns themselves were never actually dropped
+--    from `patients`/`pending_registrations` until now. Existing database:
+--    ALTER TABLE `patients` DROP COLUMN `blood_type`;
+--    ALTER TABLE `pending_registrations` DROP COLUMN `blood_type`;
+--    ALTER TABLE `patients` DROP COLUMN `optical_history`;
+--    Footer content (tagline + copyright line) made admin-editable —
+--    `tagline` already existed on `clinic_settings` but had no UI field
+--    anywhere; `footer_copyright_text` is new. Both are optional: an empty
+--    tagline leaves the public pages' existing static footer text alone,
+--    and an empty copyright line falls back to the auto-generated
+--    "© {current year} {name}. All rights reserved." (applyClinicBranding(),
+--    public-nav.js). Existing database:
+--    ALTER TABLE `clinic_settings` ADD COLUMN `footer_copyright_text` VARCHAR(255) NULL DEFAULT NULL AFTER `tagline`;
+--    `tin_no`/`phic_no` (the clinic's own BIR/PhilHealth numbers) and
+--    `map_lat`/`map_lng` were all read/written by the settings API but
+--    never actually surfaced anywhere — no admin field ever set them, and
+--    no page ever displayed or used them (the Contact page's map uses
+--    `map_embed_url` instead, not raw coordinates). Existing database:
+--    ALTER TABLE `clinic_settings` DROP COLUMN `tin_no`;
+--    ALTER TABLE `clinic_settings` DROP COLUMN `phic_no`;
+--    ALTER TABLE `clinic_settings` DROP COLUMN `map_lat`;
+--    ALTER TABLE `clinic_settings` DROP COLUMN `map_lng`;
 
 SET FOREIGN_KEY_CHECKS = 1;

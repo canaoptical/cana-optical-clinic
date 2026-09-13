@@ -2418,6 +2418,21 @@ input[type="date"].reg-input::-webkit-datetime-edit-year-field {
   background: white;
 }
 .form-input::placeholder { color: #C4C9D4; }
+/* Same red-outline treatment as .reg-input.error / .lf-input.error (login,
+   registration, forgot-password) — applied to every dashboard admin/staff
+   modal field (Add/Edit Patient, Add/Edit User, etc.) so a required-field
+   or invalid-value error reads the same way everywhere in the app, not
+   just a toast with no visual pointer to which field caused it. Covers
+   the custom select and DOB-picker's visible trigger box for free too —
+   both already carry the plain .form-input class alongside their own
+   (.cust-select-trigger / .dob-picker-trigger), so marking that trigger
+   element .error hits this same rule. markFieldError()/clearFormErrors()
+   (main.js) toggle this. */
+.form-input.error,
+.form-textarea.error {
+  border-color: #DC2626;
+  box-shadow: 0 0 0 3px rgba(220,38,38,.08);
+}
 /* Standard native behaviour: pointer only over the calendar icon itself
    (the browser's own click target for opening the picker); the rest of
    the field keeps the normal text cursor so typing a date manually still
@@ -4473,7 +4488,10 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
 .pdf-dash-doc .rpt-empty   { font-size: 12px; color: #aaa; font-style: italic; padding: 8px 0; }
 .pdf-dash-doc .tbl-hdr th  { background: #f5f5f5; padding: 8px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .pdf-dash-doc .tbl-border  { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
-.pdf-dash-doc .sig-block   { margin-top: 32px; padding-top: 16px; border-top: 1px dashed #ccc; display: flex; justify-content: flex-end; }
+/* Real signature line, generous blank space above it, no crowding
+   divider — see the matching comment on .sig-block in
+   printDashboardReport() (main.js) for why. */
+.pdf-dash-doc .sig-block   { margin-top: 48px; display: flex; justify-content: flex-end; }
 .pdf-dash-doc .sig-col     { text-align: center; min-width: 220px; }
 .pdf-dash-doc .sig-line    { border-top: 1px solid #111; padding-top: 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .pdf-dash-doc .sig-sub     { font-size: 10px; color: #888; margin-top: 3px; }
@@ -4537,7 +4555,10 @@ input[type="date"].form-input::-webkit-datetime-edit-year-field {
 .pdf-report-doc .chart-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pdf-report-doc .chart-box    { border: 1px solid #e5e7eb; border-radius: 4px; padding: 12px; page-break-inside: avoid; }
 .pdf-report-doc .chart-label  { font-size: 8.5pt; font-weight: 700; margin-bottom: 8px; }
-.pdf-report-doc .sig-block { margin-top: 28px; padding-top: 14px; border-top: 1px dashed #ccc; display: flex; justify-content: flex-end; }
+/* Real signature line, generous blank space above it, no crowding
+   divider — see the matching comment on .sig-block in printReport()
+   (pages.js) for why. */
+.pdf-report-doc .sig-block { margin-top: 40px; display: flex; justify-content: flex-end; }
 .pdf-report-doc .sig-col   { text-align: center; min-width: 200px; }
 .pdf-report-doc .sig-line  { border-top: 1px solid #111; padding-top: 6px; font-size: 8pt; font-weight: 700; text-transform: uppercase; }
 .pdf-report-doc .sig-sub   { font-size: 7pt; color: #888; margin-top: 2px; }

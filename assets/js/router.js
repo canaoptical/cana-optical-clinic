@@ -66,7 +66,7 @@ const SIDEBAR_CONFIG = {
         { key: 'admin-settings', filter: 'consultation', label: 'Consultation Settings' },
         { key: 'admin-settings', filter: 'terms',        label: 'Terms & Policies' },
         { key: 'admin-settings', filter: 'archives',     label: 'Archives' },
-        { key: 'active-sessions',                        label: 'Security & Sign-in' }
+        { key: 'active-sessions',                        label: 'Sessions & Sign-in' }
       ]
     }
   ],
@@ -94,7 +94,7 @@ const SIDEBAR_CONFIG = {
     { key: 'staff-settings',       label: 'Settings',         icon: 'settings',
       children: [
         { key: 'staff-settings',   label: 'My Profile' },
-        { key: 'active-sessions',  label: 'Security & Sign-in' }
+        { key: 'active-sessions',  label: 'Sessions & Sign-in' }
       ]
     }
   ],
@@ -122,7 +122,7 @@ const SIDEBAR_CONFIG = {
     { key: 'doctor-settings',      label: 'Settings',         icon: 'settings',
       children: [
         { key: 'doctor-settings',  label: 'My Profile' },
-        { key: 'active-sessions',  label: 'Security & Sign-in' }
+        { key: 'active-sessions',  label: 'Sessions & Sign-in' }
       ]
     }
   ],
@@ -154,7 +154,7 @@ const SIDEBAR_CONFIG = {
     { key: 'patient-settings',     label: 'Settings',         icon: 'settings',
       children: [
         { key: 'patient-settings', label: 'My Profile' },
-        { key: 'active-sessions',  label: 'Security & Sign-in' }
+        { key: 'active-sessions',  label: 'Sessions & Sign-in' }
       ]
     }
   ]
@@ -223,7 +223,7 @@ const PAGE_LABELS = {
   'patient-notifications': 'Notifications',
   'notifications':         'Notifications',
   'patient-settings':      'Settings',
-  'active-sessions':       'Security & Sign-in'
+  'active-sessions':       'Sessions & Sign-in'
 }
 
 // ── Navigate ────────────────────────────────────────────────────

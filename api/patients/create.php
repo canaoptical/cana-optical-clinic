@@ -21,6 +21,14 @@ if (!in_array($_SESSION['role'], ['admin', 'staff'], true)) {
     jsonResponse(['success' => false, 'message' => 'Unauthorized.'], 403);
 }
 
+// Scoped per logged-in staff account, not per IP — a shared front-desk
+// PC shouldn't have one spam-clicker lock out a coworker's own genuine
+// registrations. 20 per 5 min comfortably covers a real walk-in rush
+// while still stopping a rapid-fire double-click/scripted burst (each hit
+// creates a patient row, and one with an email attached also sends a real
+// welcome email — see sendEmail() below).
+rateLimit('patient-create:' . $_SESSION['user_id'], 20, 300);
+
 $b      = getBody();
 $first  = trim($b['firstName']      ?? '');
 $middle = trim($b['middleName']     ?? '');

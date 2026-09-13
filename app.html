@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=block" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/global.css?v=202609011k">
+  <link rel="stylesheet" href="assets/css/global.css?v=202609011n">
   <style>
     .badge-no-show {
       display: inline-flex !important;
@@ -677,7 +677,7 @@
 
           <div class="reg-group reg-full">
             <label class="reg-label">Contact Number <span class="reg-req">*</span></label>
-            <input type="text" id="reg-contact" class="reg-input" placeholder="09XXXXXXXXX" inputmode="numeric" maxlength="11" oninput="this.value=this.value.replace(/\D/g,'')">
+            <input type="text" id="reg-contact" class="reg-input" placeholder="0912-345-6789" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)">
           </div>
 
           <div class="reg-group reg-full">
@@ -885,15 +885,15 @@
 </script>
 <script src="assets/js/clinic-data.js"></script>
 <script src="assets/js/analytics-data.js"></script>
-<script src="assets/js/db.js?v=20260806j"></script>
-<script src="assets/js/auth.js?v=202609011m"></script>
+<script src="assets/js/db.js?v=20260806m"></script>
+<script src="assets/js/auth.js?v=202609011q"></script>
 <script src="assets/js/charts.js"></script>
 <script src="assets/js/pagination.js?v=20260806a"></script>
 <script src="assets/js/sortable.js"></script>
-<script src="assets/js/router.js?v=202609011g"></script>
-<script src="assets/js/pages.js?v=202609011zzl"></script>
+<script src="assets/js/router.js?v=202609011h"></script>
+<script src="assets/js/pages.js?v=202609011zzv"></script>
 <script src="api/badge-fix.php"></script>
-<script src="assets/js/main.js?v=202609011bu"></script>
+<script src="assets/js/main.js?v=202609011cm"></script>
 <script>
   // If navigated here with #register, set a flag so restoreSession()
   // opens the register screen instead of login when no session exists

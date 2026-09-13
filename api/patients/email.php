@@ -23,6 +23,12 @@ if (!in_array($role, ['admin', 'staff'], true)) {
     jsonResponse(['success' => false, 'message' => 'Unauthorized.'], 403);
 }
 
+// Every hit here is a real outbound email — tighter than the DB-write-only
+// limits elsewhere. 10 per 5 min per staff account is plenty for genuine
+// one-off patient emails, but stops a spam-clicked Send button (or a
+// scripted call straight to this endpoint) from blasting a patient's inbox.
+rateLimit('patient-email:' . $_SESSION['user_id'], 10, 300);
+
 $b         = getBody();
 $patientId = trim($b['patientId'] ?? '');
 $subject   = trim($b['subject'] ?? '');

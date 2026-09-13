@@ -38,9 +38,18 @@ try {
         jsonResponse(['success' => false, 'message' => 'Reset link is invalid or has expired.']);
     }
 
-    $userStmt = $pdo->prepare('SELECT id, password_hash FROM users WHERE LOWER(email) = ? LIMIT 1');
+    $userStmt = $pdo->prepare('SELECT id, password_hash, is_active FROM users WHERE LOWER(email) = ? LIMIT 1');
     $userStmt->execute([strtolower($row['email'])]);
     $userRow = $userStmt->fetch();
+
+    // Same is_active gate as forgot-password.php's first step — mainly
+    // belt-and-suspenders here, since that earlier step already stops an
+    // archived account from ever getting a valid OTP/token in the first
+    // place, but this covers the edge case of the account being archived
+    // in the few minutes between requesting the code and finishing this step.
+    if ($userRow && !$userRow['is_active']) {
+        jsonResponse(['success' => false, 'message' => 'Your account is inactive. Please contact the clinic to have it reactivated.']);
+    }
 
     if ($userRow && passwordWasUsedBefore($pdo, (int)$userRow['id'], $password)) {
         jsonResponse(['success' => false, 'message' => 'You can\'t reuse a previous password. Please choose a different one.']);

@@ -23,6 +23,9 @@ if (!in_array($role, ['admin', 'staff'], true)) {
     jsonResponse(['success' => false, 'message' => 'Unauthorized.'], 403);
 }
 
+// Same reasoning as patients/email.php — each hit sends a real email.
+rateLimit('contact-reply:' . $_SESSION['user_id'], 10, 300);
+
 $b     = getBody();
 $id    = (int)($b['id'] ?? 0);
 $reply = trim($b['reply'] ?? '');

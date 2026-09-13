@@ -15,7 +15,7 @@ $sid    = session_id();
 
 // Signing out here also clears every OTHER session on this account that's
 // the exact same browser AND the exact same IP as this one — the same
-// same-device-and-IP cascade the Security & Sign-in page's own Sign Out
+// same-device-and-IP cascade the Sessions & Sign-in page's own Sign Out
 // button already does (revokeSessionByShortId(), api/helpers.php), now
 // also on the everyday sidebar Sign Out. This only ever matches genuine
 // duplicates of THIS physical device/network (an old tab, a session that

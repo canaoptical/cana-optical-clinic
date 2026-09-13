@@ -507,7 +507,7 @@ function tagSessionOwner(PDO $pdo, int $userId): void {
     // (see the 'new_login' branch in _notifNavTarget(), router.js).
     $deviceLabel = parseDeviceLabel($ua);
     createNotification($pdo, $userId, 'new_login', 'New Sign-in Detected',
-        "A new sign-in to your account was detected on {$deviceLabel} (IP: {$ip}). If this wasn't you, review your sessions in Security &amp; Sign-in and change your password."
+        "A new sign-in to your account was detected on {$deviceLabel} (IP: {$ip}). If this wasn't you, review your sessions in Sessions &amp; Sign-in and change your password."
     );
 }
 

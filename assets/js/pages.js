@@ -2024,13 +2024,18 @@ function pageAdminReports() {
   .chart-box    { border: 1px solid #e5e7eb; border-radius: 4px; padding: 12px; page-break-inside: avoid; }
   .chart-label  { font-size: 8.5pt; font-weight: 700; margin-bottom: 8px; }
 
-  /* ── Prepared by ── same sig-line convention as the Exam/Rx print
-     documents' doctor signature block, repurposed here to credit whichever
-     admin/staff generated this report rather than a clinical signer. */
+  /* ── Prepared by ── real signature line for whoever prepared/proofed
+     this report to sign off on, same sig-line convention as the Exam/Rx
+     print documents' doctor signature block. What used to be wrong: the
+     block opened with its own dashed divider immediately followed by the
+     solid sig-line, with barely any gap between them — a line sitting
+     right above another line, no actual blank room for a pen. Dropped
+     that divider and let margin-top alone provide real blank space
+     before the one line that matters. */
   /* No page-break-inside:avoid — a short block like this is more likely to
      get shoved onto its own lonely trailing page by "avoid" than to
      actually need protection from a bad mid-block split. */
-  .sig-block { margin-top: 28px; padding-top: 14px; border-top: 1px dashed #ccc; display: flex; justify-content: flex-end; }
+  .sig-block { margin-top: 40px; display: flex; justify-content: flex-end; }
   .sig-col   { text-align: center; min-width: 200px; }
   .sig-line  { border-top: 1px solid #111; padding-top: 6px; font-size: 8pt; font-weight: 700; text-transform: uppercase; }
   .sig-sub   { font-size: 7pt; color: #888; margin-top: 2px; }
@@ -2347,6 +2352,7 @@ function pageAdminSettings() {
   // ── Section: Clinic Information ─────────────────────────────
   function sectionClinic() {
     setTimeout(() => window.loadGalleryAdmin && window.loadGalleryAdmin(), 40);
+    setTimeout(() => window._ciUpdateFooterPreview && window._ciUpdateFooterPreview(), 40);
     return `
     <div class="page-header">
       <div class="page-header-left">
@@ -2357,30 +2363,62 @@ function pageAdminSettings() {
     <div class="page-body">
       <div class="card" style="padding:28px 32px">
         <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Clinic Logo</label>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="width:60px;height:60px;border-radius:50%;background:#FFF0DC;border:1.5px solid #FFD9A8;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+                <img id="ci-logo-preview" src="${window._clinicLogoUrl || clinicInfo.logoUrl || 'assets/images/logo/clinic-logo.png'}" style="width:50px;height:50px;object-fit:contain">
+              </div>
+              <div>
+                <label for="ci-logo-input" style="cursor:pointer">
+                  <div class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:.8rem;padding:7px 14px">
+                    ${ic('upload','icon-sm')} Upload New Logo
+                  </div>
+                </label>
+                <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">PNG, JPG, SVG. Shown in the sidebar, topbar, public navbar, footer, favicon, and login screen, since this is the clinic's most visible branding, so it comes first here too.</div>
+                <input type="file" id="ci-logo-input" accept="image/*" style="display:none"
+                       onchange="window.handleLogoUpload(this,'ci-logo-preview')">
+              </div>
+            </div>
+          </div>
           <div class="form-row-2">
             <div class="form-group">
               <label class="form-label">Clinic Name <span class="req">*</span></label>
-              <input class="form-input" id="ci-name" value="${clinicInfo.name.replace(/"/g,'&quot;')}">
+              <input class="form-input" id="ci-name" oninput="window._ciUpdateFooterPreview()" value="${clinicInfo.name.replace(/"/g,'&quot;')}">
               <div style="font-size:.72rem;color:#9CA3AF;margin-top:5px">Displayed as the logo name across all pages, the loader, and auth screens.</div>
             </div>
             <div class="form-group">
-              <label class="form-label">Contact Number</label>
-              <input class="form-input" id="ci-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${clinicInfo.phone.replace(/"/g,'&quot;')}">
+              <label class="form-label">Contact Number <span class="req">*</span></label>
+              <input class="form-input" id="ci-phone" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this);window._ciUpdateFooterPreview()" value="${clinicInfo.phone.replace(/"/g,'&quot;')}">
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Clinic Address</label>
-            <input class="form-input" id="ci-address" value="${clinicInfo.address.replace(/"/g,'&quot;')}">
+            <label class="form-label">Clinic Address <span class="req">*</span></label>
+            <input class="form-input" id="ci-address" oninput="window._ciUpdateFooterPreview()" value="${clinicInfo.address.replace(/"/g,'&quot;')}">
           </div>
           <div class="form-row-2">
             <div class="form-group">
               <label class="form-label">Email Address <span class="req">*</span></label>
-              <input class="form-input" type="email" id="ci-email" value="${clinicInfo.email.replace(/"/g,'&quot;')}">
+              <input class="form-input" type="email" id="ci-email" oninput="window._ciUpdateFooterPreview()" value="${clinicInfo.email.replace(/"/g,'&quot;')}">
             </div>
             <div class="form-group">
-              <label class="form-label">Operating Hours</label>
-              <input class="form-input" id="ci-hours" value="${clinicInfo.hours.replace(/"/g,'&quot;')}">
+              <label class="form-label">Operating Hours <span class="req">*</span></label>
+              <input class="form-input" id="ci-hours" oninput="window._ciUpdateFooterPreview()" value="${clinicInfo.hours.replace(/"/g,'&quot;')}">
             </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Footer Tagline</label>
+            <input class="form-input" id="ci-tagline" maxlength="255" oninput="window._ciUpdateFooterPreview()" value="${(clinicInfo.tagline || '').replace(/"/g,'&quot;')}">
+            <div style="font-size:.72rem;color:#9CA3AF;margin-top:5px">Short description shown under the clinic name in the footer of every public page.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Footer Copyright Text</label>
+            <input class="form-input" id="ci-copyright" maxlength="255" oninput="window._ciUpdateFooterPreview()" placeholder="© ${new Date().getFullYear()} ${(clinicInfo.name || 'Cana Optical Clinic').replace(/"/g,'&quot;')}. All rights reserved." value="${(clinicInfo.footerCopyrightText || '').replace(/"/g,'&quot;')}">
+            <div style="font-size:.72rem;color:#9CA3AF;margin-top:5px">Leave blank to auto-generate this from the clinic name and current year.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Footer Preview</label>
+            <div id="ci-footer-preview" style="border-radius:10px;overflow:hidden"></div>
           </div>
           <div class="form-row-2">
             <div class="form-group">
@@ -2414,24 +2452,6 @@ function pageAdminSettings() {
             <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">MP4 or WebM, up to 2GB. Shown as a video player on the public homepage — leave unset to hide the section.</div>
             <input type="file" id="ci-video-input" accept="video/mp4,video/webm" style="display:none"
                    onchange="window.handleVideoUpload(this)">
-          </div>
-        </div>
-
-        <div style="border-top:1px solid #F3F4F6;margin:20px 0 16px"></div>
-        <div style="font-size:.85rem;font-weight:600;color:#374151;margin-bottom:12px">Clinic Logo</div>
-        <div style="display:flex;align-items:center;gap:16px">
-          <div style="width:60px;height:60px;border-radius:50%;background:#FFF0DC;border:1.5px solid #FFD9A8;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
-            <img id="ci-logo-preview" src="${clinicInfo.logoUrl || 'assets/images/logo/clinic-logo.png'}" style="width:50px;height:50px;object-fit:contain">
-          </div>
-          <div>
-            <label for="ci-logo-input" style="cursor:pointer">
-              <div class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:.8rem;padding:7px 14px">
-                ${ic('upload','icon-sm')} Upload New Logo
-              </div>
-            </label>
-            <div style="font-size:.72rem;color:#9CA3AF;margin-top:4px">PNG, JPG, SVG</div>
-            <input type="file" id="ci-logo-input" accept="image/*" style="display:none"
-                   onchange="window.handleLogoUpload(this,'ci-logo-preview')">
           </div>
         </div>
 
@@ -4093,7 +4113,7 @@ function pageNewExamination() {
       </div>
       <div class="form-group" style="margin:0">
         ${fl('Contact Number')}
-        <input id="ne-contact" class="form-input" style="${inp}" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${p.contact || ''}" placeholder="0921-245-2834">
+        <input id="ne-contact" class="form-input" style="${inp}" inputmode="numeric" maxlength="13" oninput="window.formatContactInput(this)" value="${p.contact || ''}" placeholder="0912-345-6789">
       </div>
     </div>
     <div class="form-group" style="margin-bottom:16px">
@@ -6535,8 +6555,11 @@ function pagePatientSettings() {
 
 // ════════════════════════════════════════════════════════════════
 //  ACTIVE SESSIONS — every role, reached via its own dedicated
-//  "Security & Sign-in" sidebar entry (router.js SIDEBAR_CONFIG),
-//  not a summary card buried inside the Settings/Profile page.
+//  "Sessions & Sign-in" sidebar entry (router.js SIDEBAR_CONFIG),
+//  not a summary card buried inside the Settings/Profile page. Named
+//  "Sessions", not "Security" — the actual account-security control
+//  (changing the password) lives on the Profile page instead; this one
+//  only ever shows/manages signed-in devices.
 // ════════════════════════════════════════════════════════════════
 function pageActiveSessions() {
   window.state.afterRender = () => window.loadActiveSessionsPage()
@@ -6544,7 +6567,7 @@ function pageActiveSessions() {
   return `
   <div class="page-header">
     <div class="page-header-left">
-      <h1 class="page-title">Security &amp; Sign-in</h1>
+      <h1 class="page-title">Sessions &amp; Sign-in</h1>
       <p class="page-subtitle">Devices currently signed in to your account. Changing your password signs the others out automatically.</p>
     </div>
   </div>

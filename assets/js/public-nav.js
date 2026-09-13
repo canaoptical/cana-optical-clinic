@@ -103,13 +103,21 @@
         'li.nav-link-book',                // mobile nav "Book Now" item
         '.services-cta',                   // Services page's whole CTA block
         '.doctors-cta',                    // Doctors page's whole CTA block
-        'a.footer-booknow',                // footer quick link
         'a.btn-solid[href*="app.html"]',   // hero "Book Appointment" button
       ]
       toHide.forEach(function (sel) {
         document.querySelectorAll(sel).forEach(function (el) {
           el.style.display = 'none'
         })
+      })
+      // Footer's Quick Links list is a flex column with its own `gap`
+      // between items (.footer-links, public.css) — hiding just the <a>
+      // still left its <li> sitting there as an empty flex item, which
+      // still claimed its share of that gap and showed up as a blank space
+      // at the bottom of the list. Hiding the whole <li> instead closes it.
+      document.querySelectorAll('a.footer-booknow').forEach(function (el) {
+        var li = el.closest('li')
+        ;(li || el).style.display = 'none'
       })
     }
 
@@ -209,8 +217,19 @@
     var displayName = clinic.name
     if (displayName) {
       document.querySelectorAll('.nav-logo-name, .footer-logo-name').forEach(function (el) { el.textContent = displayName })
-      var footerLine = document.querySelector('.footer-line')
-      if (footerLine) footerLine.textContent = '© ' + new Date().getFullYear() + ' ' + displayName + '. All rights reserved.'
+    }
+    // A custom copyright line (Clinic Information > Footer Copyright Text)
+    // wins if the admin set one; otherwise keep auto-generating it from the
+    // clinic name + current year, same as before this field existed.
+    var footerLine = document.querySelector('.footer-line')
+    if (footerLine) {
+      if (clinic.footerCopyrightText) footerLine.textContent = clinic.footerCopyrightText
+      else if (displayName) footerLine.textContent = '© ' + new Date().getFullYear() + ' ' + displayName + '. All rights reserved.'
+    }
+    // Footer tagline (Clinic Information > Footer Tagline) — leaves the
+    // static HTML description alone when nothing's been set yet.
+    if (clinic.tagline) {
+      document.querySelectorAll('.footer-desc').forEach(function (el) { el.textContent = clinic.tagline })
     }
 
     // Contact page info card (phone/email stay clickable there)

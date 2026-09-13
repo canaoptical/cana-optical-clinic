@@ -51,7 +51,7 @@ window.updatePwChecklist = updatePwChecklist
 //    collects a person's contact number or address) ────────────────
 // Every person-contact-number field across the app shares formatContactInput()
 // (below) on its oninput, so typing digits auto-formats to the same
-// "0921-245-2834" pattern everywhere instead of leaving hyphen placement up
+// "0912-345-6789" pattern everywhere instead of leaving hyphen placement up
 // to whoever's typing — plus legacy stored numbers entered before that
 // existed. Hyphens are stripped here before checking length so any of that
 // still validates the same way — this just checks there are 11 actual
@@ -60,7 +60,7 @@ function isValidContact(contact) {
   return /^\d{11}$/.test((contact || '').trim().replace(/-/g, ''))
 }
 
-// Auto-formats a contact-number input to the "0921-245-2834" pattern (4-3-4
+// Auto-formats a contact-number input to the "0912-345-6789" pattern (4-3-4
 // digit grouping) as the user types, capped at 11 digits — every contact
 // field across the app shares this on its oninput (patient/doctor/staff/
 // admin self- or other-editing, and the clinic's own number in Settings >
@@ -218,7 +218,7 @@ async function logout(reason) {
   // by the catch below, and the app moved on as if logout had succeeded —
   // clearing local state and showing the login screen — while the actual
   // session row was never touched server-side, leaving it stuck in
-  // Security & Sign-in indefinitely with zero indication anything went
+  // Sessions & Sign-in indefinitely with zero indication anything went
   // wrong. Retrying a couple of times closes most of that gap without
   // risking trapping someone on the page if the network is genuinely down
   // (still gives up and logs out locally after 3 attempts either way).
@@ -2134,11 +2134,11 @@ async function _syncClinicSettings() {
     if (!d.success || !d.settings) return
     const s = d.settings
     Object.assign(clinicInfo, {
-      name: s.name, tagline: s.tagline, address: s.address, phone: s.phone,
-      mobile: s.mobile, email: s.email, hours: s.hours, tinNo: s.tinNo, phicNo: s.phicNo,
+      name: s.name, tagline: s.tagline, footerCopyrightText: s.footerCopyrightText ?? '', address: s.address, phone: s.phone,
+      mobile: s.mobile, email: s.email, hours: s.hours,
       foundedYear: s.foundedYear ?? null,
       logoUrl: s.logoUrl, heroUrl: s.heroUrl ?? null,
-      mapLat: s.mapLat ?? null, mapLng: s.mapLng ?? null, mapEmbedUrl: s.mapEmbedUrl ?? null,
+      mapEmbedUrl: s.mapEmbedUrl ?? null,
       videoUrl: s.videoUrl ?? null,
       galleryMaxPhotos: s.galleryMaxPhotos ?? null,
       termsContent: s.termsContent ?? null,

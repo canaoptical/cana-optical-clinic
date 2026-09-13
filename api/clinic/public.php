@@ -50,7 +50,7 @@ function buildDayRanges(array $openDays): string {
 try {
     $pdo = getDB();
     $r = $pdo->query(
-        'SELECT name, tagline, address, phone, email, hours, logo_url, hero_url, map_lat, map_lng, map_embed_url, video_url,
+        'SELECT name, tagline, footer_copyright_text, address, phone, email, hours, logo_url, hero_url, map_embed_url, video_url,
                 clinic_days, morning_start, morning_end, afternoon_start, afternoon_end, founded_year, terms_content, privacy_content
          FROM clinic_settings WHERE id = 1 LIMIT 1'
     )->fetch();
@@ -75,13 +75,20 @@ try {
         }
     }
 
-    // Fall back to the manual hours text if schedule fields are not configured
-    $displayHours = $schedule ?: $r['hours'];
+    // The manually-typed Operating Hours text (Clinic Information settings)
+    // wins whenever it's actually set — clinic_days/morning_start/
+    // afternoon_end all have NOT NULL DEFAULT values in the schema, so
+    // $schedule was essentially always non-empty and silently overrode
+    // every edit made to the manual field, making it look like Operating
+    // Hours changes there just never took effect. The auto-generated
+    // schedule now only fills in for a clinic that's never typed one.
+    $displayHours = $r['hours'] ?: $schedule;
 
     header('Cache-Control: no-store, no-cache, must-revalidate');
     jsonResponse(['success' => true, 'clinic' => [
         'name'     => $r['name'],
         'tagline'  => $r['tagline'],
+        'footerCopyrightText' => $r['footer_copyright_text'] ?? null,
         'address'  => $r['address'],
         'phone'    => $r['phone'],
         'email'    => $r['email'],

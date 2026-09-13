@@ -25,6 +25,11 @@ if (!in_array($role, ['admin', 'staff', 'patient'], true)) {
     jsonResponse(['success' => false, 'message' => 'Unauthorized.'], 403);
 }
 
+// Scoped per logged-in account. Generous enough for staff booking several
+// patients back-to-back, but stops a spam-clicked/scripted burst from
+// flooding the appointments table or hammering a specific slot.
+rateLimit('appt-create:' . $_SESSION['user_id'], 20, 300);
+
 $b = getBody();
 
 $patientId   = trim($b['patientId']   ?? '');

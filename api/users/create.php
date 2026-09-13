@@ -21,6 +21,12 @@ if ($_SESSION['role'] !== 'admin') {
     jsonResponse(['success' => false, 'message' => 'Only admins can create user accounts.'], 403);
 }
 
+// Same reasoning as patients/create.php's rate limit — scoped per admin
+// account, generous enough for legitimate onboarding of several staff at
+// once, but stops a spam-clicked or scripted burst from flooding the
+// users table and firing off duplicate account-created emails.
+rateLimit('user-create:' . $_SESSION['user_id'], 20, 300);
+
 $b       = getBody();
 $role    = trim($b['role']           ?? '');
 $first   = trim($b['firstName']      ?? '');
