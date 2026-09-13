@@ -4500,6 +4500,7 @@ function pageNewExamination() {
       <div style="text-align:center;color:#9CA3AF;font-size:.84rem;padding:16px">Loading preview...</div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      ${isEdit ? `<button class="btn-ghost" style="color:#0891b2;border-color:#0891b2" onclick="window.generateClearance('${p.id}','${params.examId}')">${ic('award','icon-sm')} Generate Clearance</button>` : ''}
       <button class="btn-secondary" onclick="window.printNewExamDraft(window._examPatientId)">${ic('printer','icon-sm')} Print Prescription</button>
     </div>
   </div>`

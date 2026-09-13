@@ -1477,13 +1477,34 @@ function _printHtmlDocument(html) {
     }
   }
 
-  iframe.onload = () => setTimeout(doPrint, 100)
+  // Waits for every <img> in the printed document (patient/doctor photo,
+  // clinic logo) to actually finish loading OR fail before opening the
+  // print dialog. Without this, print() firing on a fixed short timer
+  // could still catch a slow network image (patient photos in particular,
+  // on Railway) mid-request — captured as blank/still-loading instead of
+  // either the real photo or the orange-initials fallback its onerror
+  // handler was supposed to have already swapped in by then.
+  const waitForImages = () => {
+    const imgs = Array.from(iframe.contentWindow.document.images || [])
+    if (!imgs.length) { doPrint(); return }
+    let remaining = imgs.length
+    const settle = () => { if (--remaining <= 0) doPrint() }
+    imgs.forEach(img => {
+      if (img.complete) { settle(); return }
+      img.addEventListener('load',  settle, { once: true })
+      img.addEventListener('error', settle, { once: true })
+    })
+  }
+
+  iframe.onload = () => setTimeout(waitForImages, 50)
   const doc = iframe.contentWindow.document
   doc.open()
   doc.write(html)
   doc.close()
-  // Fallback in case `load` never fires for a document.write()'d iframe in this browser
-  setTimeout(doPrint, 700)
+  // Absolute safety net either way — never block printing forever on one
+  // stuck image, and covers `load` never firing at all for a
+  // document.write()'d iframe in some browsers.
+  setTimeout(doPrint, 4000)
 }
 window._printHtmlDocument = _printHtmlDocument
 
@@ -1560,7 +1581,25 @@ function _downloadLiveContentAsPdf(bodyContent, wrapperClass, filename, btnEl, m
   wrap.appendChild(content)
   document.body.appendChild(wrap)
 
-  window.html2pdf()
+  // Same image-timing fix as _printHtmlDocument()'s waitForImages() —
+  // html2canvas snapshots whatever's actually in the DOM at capture time,
+  // so a still-loading patient photo (or one about to fail and swap to
+  // its orange-initials fallback via onerror) needs to have settled
+  // first, or the PDF just gets a blank/gray gap where that circle
+  // should be. Never blocks the download forever on one stuck image.
+  const settleImages = () => {
+    const imgs = Array.from(content.querySelectorAll('img'))
+    if (!imgs.length) return Promise.resolve()
+    return Promise.race([
+      Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => {
+        img.addEventListener('load',  res, { once: true })
+        img.addEventListener('error', res, { once: true })
+      }))),
+      new Promise(res => setTimeout(res, 4000)),
+    ])
+  }
+
+  settleImages().then(() => window.html2pdf()
     .set({
       filename,
       margin:      marginMm,
@@ -1574,6 +1613,7 @@ function _downloadLiveContentAsPdf(bodyContent, wrapperClass, filename, btnEl, m
     .then(() => toast('PDF downloaded successfully.', 'success'))
     .catch(() => toast('Could not generate the PDF. Try Print instead.', 'error'))
     .finally(() => { wrap.remove(); cleanup() })
+  )
 }
 window._downloadLiveContentAsPdf = _downloadLiveContentAsPdf
 
